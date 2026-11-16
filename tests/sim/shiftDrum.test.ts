@@ -1,12 +1,12 @@
 import { test, expect } from 'vitest';
 import { PARAMS } from '../../src/sim/params';
 import { deg, toDeg } from '../../src/sim/units';
-import { detentTorque, grooveCommand, pawlTorque, stepDrum } from '../../src/sim/shiftDrum';
+import { detentTorque, grooveCommand, nearestDetent, pawlTorque, stepDrum } from '../../src/sim/shiftDrum';
 
 const settle = (startDeg: number, pedalTrace: (t: number) => number, seconds = 1) => {
   // integrates pawl + detent only (no forks): returns the final drum angle in degrees
   let drum = { angle: deg(startDeg), omega: 0 };
-  let ratchet = { armed: true, strokeStartAngle: drum.angle };
+  let ratchet = { strokeStartAngle: drum.angle };
   for (let t = 0; t < seconds; t += PARAMS.dt) {
     const p = pawlTorque(pedalTrace(t), drum.angle, ratchet);
     ratchet = p.ratchet;
@@ -86,4 +86,12 @@ test('a full stroke reaches neutral only from the half-step between first and se
   for (let start = 61; start <= 300; start += 1) {
     for (const dir of [+1, -1]) expect(Math.abs(settle(start, stroke(dir)) - 30)).toBeGreaterThan(5);
   }
+});
+test('nearest detent names the closest detent and the error from it', () => {
+  expect(nearestDetent(deg(31))).toMatchObject({ name: 'N', angle: deg(30) });
+  expect(toDeg(nearestDetent(deg(31)).error)).toBeCloseTo(1, 9);
+  expect(nearestDetent(deg(89)).name).toBe(2);
+  expect(nearestDetent(deg(91)).name).toBe(3);
+  expect(toDeg(nearestDetent(deg(298)).error)).toBeCloseTo(-2, 9);
+  expect(nearestDetent(deg(-1)).name).toBe(1);
 });

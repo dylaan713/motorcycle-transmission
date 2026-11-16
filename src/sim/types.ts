@@ -1,5 +1,7 @@
 export type GearId = 1 | 2 | 3 | 4 | 5 | 6;
 export type SliderId = 'A' | 'B' | 'C';
+/** A drum detent: one per gear, and neutral between first and second. */
+export type DetentName = GearId | 'N';
 
 export interface Inputs {
   throttle: number; // 0..1
@@ -39,8 +41,9 @@ export interface SimState {
   inputShaftOmega: number;
   outputShaftOmega: number;
   roadSpeed: number; // m/s
-  drum: { angle: number; omega: number };
-  pedal: { armed: boolean; strokeStartAngle: number };
+  // detent: the detent the drum is seated in (within 3°), null between detents (a false neutral)
+  drum: { angle: number; omega: number; detent: DetentName | null };
+  pedal: { strokeStartAngle: number }; // drum angle where the current pedal stroke began
   sliders: Record<SliderId, SliderState>;
   lockedGear: GearId | null; // null = neutral or false neutral
   dogTorque: number; // N·m through the locked dog, signed

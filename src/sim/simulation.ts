@@ -6,7 +6,7 @@ import {
 } from './kinematics';
 import { engineTorque, nextRunning } from './engine';
 import { clutchCapacity, clutchTorque } from './clutch';
-import { detentTorque, grooveCommand, pawlTorque, stepDrum } from './shiftDrum';
+import { detentTorque, grooveCommand, pawlTorque, seatedDetent, stepDrum } from './shiftDrum';
 import { engageSpeeds, stepSlider, targetGear } from './dogs';
 import {
   NEUTRAL_INPUTS, type DeepPartial, type GearId, type Inputs, type SimState, type SliderId,
@@ -17,7 +17,13 @@ export interface Simulation {
   getState(): SimState; // a fresh copy each call
   setState(patch: DeepPartial<SimState>): void; // for scenarios and tests
   step(inputs: Inputs): void; // exactly one PARAMS.dt
-  advance(inputs: Inputs, seconds: number): number; // steps for min(seconds, 0.1); returns seconds simulated
+  /**
+   * Convenience for scripts and tests: takes whole steps covering min(seconds, 0.1) with the same
+   * inputs and returns the time simulated. The sub-step remainder is dropped, not carried, so
+   * calling it once per animation frame runs slow. Real-time callers keep their own time
+   * accumulator and call `step` (as the frame loop does).
+   */
+  advance(inputs: Inputs, seconds: number): number;
   reset(): void; // standstill, neutral, engine running at idle
 }
 
@@ -123,8 +129,8 @@ function initialState(): SimState {
     inputShaftOmega: 0,
     outputShaftOmega: 0,
     roadSpeed: 0,
-    drum: { angle: drumAngle, omega: 0 },
-    pedal: { armed: true, strokeStartAngle: drumAngle },
+    drum: { angle: drumAngle, omega: 0, detent: seatedDetent(drumAngle) },
+    pedal: { strokeStartAngle: drumAngle },
     sliders: { A: freeSlider(), B: freeSlider(), C: freeSlider() },
     lockedGear: null,
     dogTorque: 0,
@@ -193,8 +199,9 @@ function stepState(s: SimState, raw: Inputs): SimState {
 
   // 2. Drum, then the fork block.
   const pawl = pawlTorque(u.pedal, s.drum.angle, s.pedal);
-  let drum = stepDrum(s.drum, pawl.torque + detentTorque(s.drum.angle) + u.handDrumTorque, DT);
-  if (forkBlocks(s.sliders, s.drum.angle, drum.angle)) drum = { angle: s.drum.angle, omega: 0 };
+  let moved = stepDrum(s.drum, pawl.torque + detentTorque(s.drum.angle) + u.handDrumTorque, DT);
+  if (forkBlocks(s.sliders, s.drum.angle, moved.angle)) moved = { angle: s.drum.angle, omega: 0 };
+  const drum = { ...moved, detent: seatedDetent(moved.angle) };
 
   // 3. Sliders, with speed matching when a dog drops in.
   let wIn = s.inputShaftOmega;
@@ -305,12 +312,13 @@ export function createSimulation(): Simulation {
       if (!isObject(patch)) return; // nothing to merge
       const p = patch as DeepPartial<SimState>;
       const merged = deepMerge(cloneState(state), p);
-      // roadSpeed and lockedGear are derived; a patch of roadSpeed alone sets the output shaft
+      // roadSpeed, lockedGear and drum.detent are derived; a patch of roadSpeed alone sets the output shaft
       if (p.roadSpeed !== undefined && p.outputShaftOmega === undefined) {
         merged.outputShaftOmega = outputOmegaFromRoad(p.roadSpeed);
       }
       merged.roadSpeed = roadSpeed(merged.outputShaftOmega);
       merged.lockedGear = lockedGearOf(merged.sliders);
+      merged.drum.detent = seatedDetent(merged.drum.angle);
       state = merged;
     },
     step(inputs) {

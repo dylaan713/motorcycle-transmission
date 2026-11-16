@@ -131,3 +131,20 @@ test('a weak clutch against a stopped engine slips steadily instead of chatterin
 test('idle settles at the idle speed in neutral', () => {
   expect(Math.abs(toRpm(run(createSimulation(), inp(), 4).engine.omega) - PARAMS.engine.idleRpm)).toBeLessThan(40);
 });
+test('the state tells neutral from a false neutral by the detent the drum sits in', () => {
+  const sim = createSimulation();
+  expect(sim.getState().drum.detent).toBe('N');
+  expect(run(inGear(3, 6000), inp(), 0.1).drum.detent).toBe(3);
+  sim.setState({ drum: { angle: deg(90) } });
+  expect(sim.getState().drum.detent).toBeNull();     // between detents: a false neutral
+  expect(sim.getState().lockedGear).toBeNull();
+  sim.setState({ drum: { angle: deg(62.5) } });
+  expect(sim.getState().drum.detent).toBe(2);        // within 3 degrees counts as seated
+  sim.setState({ drum: { angle: deg(63.5) } });
+  expect(sim.getState().drum.detent).toBeNull();
+  expect(run(sim, inp({ clutchLever: 1 }), 0.5).drum.detent).toBe(2); // and the field follows the drum
+});
+test('the pedal ratchet state carries only the stroke start', () => {
+  const s = createSimulation().getState();
+  expect(s.pedal).toEqual({ strokeStartAngle: deg(PARAMS.drum.detents.N) });
+});
