@@ -305,12 +305,12 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
 
 Rules:
 - Every mesh under a part's node has `userData.partId` set, for picking.
-- Rotation convention: a part's rotation about its own x axis equals its angle from the simulation: `angles.crank`, `angles.input`, `angles.output`, `gearAngle(shaft, g, angles)` for every gear, `angles.crank / primaryRatio` (opposite sense) for the basket and friction plates, `angles.input` for hub, steel plates and pressure plate, `angles.output / finalRatio` for rear sprocket and wheel. Gears are built with a static phase so meshing teeth interleave at angle 0 (use `meshPhase`).
+- Rotation convention: every rotation comes from `src/model/geometry.ts`, never from raw `state.angles`, because meshing parts counter-rotate. Gears use `gearAngle(shaft, g, angles)`. Everything else uses `drawnAngles(state)`: `crank` for the crank and primary drive gear, `basket` for the clutch basket and friction plates, `input` for the input shaft, hub, steel plates and pressure plate, `output` for the output shaft and countershaft sprocket, `wheel` for the rear sprocket and wheel. A part's rotation about its own x axis equals that drawn angle. Gears are built with a static phase so meshing teeth interleave at angle 0 (use `meshPhase`).
 - Sliding gears move along x by `x × SLIDER_TRAVEL`; their forks move with them; the drum turns to `drum.angle`; star wheel turns with the drum; the detent arm swings so its roller rides the star wheel profile at the arm's angular position.
-- Dog phase: each free gear's dog ring is rotated so that the relative angle between its lugs and the facing slider's lugs equals `dogPhase(slider, side, state)` from `src/model/geometry.ts`; engaged dogs therefore sit in the gaps and blocked dogs face each other.
+- Dog phase: each free gear's dog ring is rotated so that the relative angle between its lugs and the facing slider's lugs equals `drawnDogPhase(slider, side, state)` from `src/model/geometry.ts` (the drawn-frame relative angle; not `dogPhase`, which is in the simulation's frame); engaged dogs therefore sit in the gaps and blocked dogs face each other.
 - Clutch plates take `plateStackOffsets(1 − clutch.capacity / clutchCapacityMax)`; springs stretch to match the pressure plate.
 - Pedal lever angle is ±12° × `inputs`-equivalent pedal travel inferred from the pawl state; if the state does not carry the pedal position, add `pedal.travel` to `SimState` in this task (set in `step` from the sanitised input).
-- Chain: link i sits at `s = i × pitch + angles.output × sprocketPitchRadius(16)` along `chainPath`, alternating inner and outer links.
+- Chain: link i sits at `s = i × pitch + drawnAngles(state).output × sprocketPitchRadius(16)` along `chainPath`, alternating inner and outer links.
 - `poseAssembly` sets `setTorque` on each part node: `amount = clamp(|path.torque| / 150, 0.35, 1)` for parts in `path.parts`, 0 otherwise.
 - `buildAssembly` reports progress once per group (shafts, input gears, output gears, clutch, shift mechanism, final drive) and yields to the event loop between groups.
 
@@ -335,7 +335,7 @@ test('shaft axes are a centre distance apart and gears sit on their shafts', asy
 test('pose: rotations follow the simulation and meshing gears counter-rotate', async () => {
   const a = await buildAssembly(() => {}); const sim = inGear(3, 6000); const s = run(sim, inp({ throttle: 0.3 }), 0.2);
   poseAssembly(a, s, torquePath(s));
-  expect(relAngle(a.node('gear1in'))).toBeCloseTo(wrapPi(s.angles.input), 6);
+  expect(relAngle(a.node('gear1in'))).toBeCloseTo(wrapPi(gearAngle('input', 1, s.angles)), 6);
   expect(relAngle(a.node('gear1out'))).toBeCloseTo(wrapPi(gearAngle('output', 1, s.angles)), 6);
 });
 test('pose: sliders, forks and drum move; nothing else shifts axially', async () => {
