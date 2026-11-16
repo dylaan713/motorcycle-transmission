@@ -724,7 +724,10 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
           const gearOf = GEAR_OF[id];
           if (!gearOf) break;
           const { g, shaft } = gearOf;
-          const free = gearKind(shaft, g) === 'free';
+          const kind = gearKind(shaft, g);
+          // a slider that only locks the pair is on the line already: pushDog runs through its body
+          if (kind === 'slider' && g !== state.lockedGear) break;
+          const free = kind === 'free';
           // a free input gear takes its drive from the slider's dogs; a free output gear gives it to them
           if (shaft === 'input' && free) pushDog(state, g);
           push(gearX(state, shaft, g), AXIS_Y[shaft]);
