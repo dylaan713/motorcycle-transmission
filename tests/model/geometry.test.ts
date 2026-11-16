@@ -2,11 +2,11 @@ import { describe, test, expect } from 'vitest';
 import { PARAMS } from '../../src/sim/params';
 import { dogAligned } from '../../src/sim/dogs';
 import type { SimState, SliderId } from '../../src/sim/types';
-import { gearRatio } from '../../src/sim/kinematics';
+import { finalRatio, gearRatio, primaryRatio } from '../../src/sim/kinematics';
 import { createSimulation } from '../../src/sim/simulation';
 import { deg, wrap } from '../../src/sim/units';
 import {
-  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, dogPhase, drawnDogPhase, gearAngle,
+  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, dogPhase, drawnAngles, drawnDogPhase, gearAngle,
   gearAxialPosition, gearKind, pitchRadius, sliderOfGear,
 } from '../../src/model/geometry';
 import { inGear, inp, run } from '../sim/helpers';
@@ -147,5 +147,28 @@ describe('the dog phase in the drawn frame', () => {
       expect(Math.abs(s.angles.output)).toBeGreaterThan(5);
       expect(gearAngle(shaft, g, s.angles) - ref(s.angles)).toBeCloseTo(off0, 6);
     }
+  });
+});
+
+describe('drawn angles of the parts that are not gears', () => {
+  test('signs: output and wheel counter-rotate to the input shaft, the crank to the basket', () => {
+    const s = createSimulation().getState();
+    s.angles = { crank: 3, input: 1.2, output: 0.6 };
+    const d = drawnAngles(s);
+    expect(d.crank).toBe(-3);
+    expect(d.basket).toBeCloseTo(3 / primaryRatio, 12);
+    expect(d.input).toBe(1.2);
+    expect(d.output).toBe(-0.6);
+    expect(d.wheel).toBeCloseTo(-0.6 / finalRatio, 12);
+  });
+  test('the basket and the input shaft turn together when the clutch is locked', () => {
+    const sim = inGear(3, 6000);
+    const d0 = drawnAngles(sim.getState());
+    const s = run(sim, inp({ throttle: 0.4 }), 0.5);
+    expect(s.clutch.locked).toBe(true);
+    const d1 = drawnAngles(s);
+    const turned = d1.input - d0.input;
+    expect(turned).toBeGreaterThan(10);
+    expect((d1.basket - d0.basket) / turned).toBeCloseTo(1, 3);
   });
 });

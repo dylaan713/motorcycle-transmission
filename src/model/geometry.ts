@@ -1,5 +1,5 @@
 import { PARAMS } from '../sim/params';
-import { gearAngle as simGearAngle } from '../sim/kinematics';
+import { finalRatio, gearAngle as simGearAngle, primaryRatio } from '../sim/kinematics';
 import { dogPhase as simDogPhase } from '../sim/dogs';
 import { wrap } from '../sim/units';
 import type { SimState, SliderId } from '../sim/types';
@@ -69,3 +69,18 @@ export const dogPhase = (slider: SliderId, side: 'neg' | 'pos', state: SimState)
  */
 export const drawnDogPhase = (slider: SliderId, side: 'neg' | 'pos', state: SimState): number =>
   wrap((PARAMS.sliders[slider].shaft === 'input' ? 1 : -1) * dogPhase(slider, side, state), DOG_PITCH);
+
+/**
+ * Drawn angles of the parts that are not gears, in the frame gearAngle draws in. The basket and
+ * friction plates turn with the crank side at crank / primaryRatio in the input shaft's sense, and
+ * the crank and primary drive gear counter-rotate to them. The output shaft and front sprocket
+ * draw at -angles.output; the rear sprocket and wheel turn with the front sprocket through the
+ * chain, slower by the final ratio.
+ */
+export const drawnAngles = (state: SimState): { crank: number; basket: number; input: number; output: number; wheel: number } => ({
+  crank: -state.angles.crank,
+  basket: state.angles.crank / primaryRatio,
+  input: state.angles.input,
+  output: -state.angles.output,
+  wheel: -state.angles.output / finalRatio,
+});

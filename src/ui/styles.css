@@ -77,6 +77,10 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   grid-template-areas: 'stage panel' 'deck panel';
 }
 #stage { grid-area: stage; min-width: 0; min-height: 0; position: relative; padding: var(--gutter); }
+.stage-canvas {
+  position: absolute; left: var(--gutter); top: var(--gutter); display: block;
+  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter));
+}
 #deck {
   grid-area: deck; min-width: 0;
   padding: var(--s4) var(--gutter);
