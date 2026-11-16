@@ -27,7 +27,7 @@ export const PARAMS = {
   drum: {
     // detent angles in degrees
     detents: { 1: 0, N: 30, 2: 60, 3: 120, 4: 180, 5: 240, 6: 300 },
-    inertia: 2e-4, friction: 0.25, damping: 0.5, // kg·m², N·m, N·m·s/rad; tunable
+    inertia: 2e-4, friction: 0.05, damping: 0.5, // kg·m², N·m, N·m·s/rad; tunable
     detentPeak: 2.5, neutralDetentPeak: 0.8, // N·m, tunable
     grooveFullDeg: 8, grooveZeroDeg: 22,
     strokeDeg: 62, strokeFromNeutralDeg: 32,
