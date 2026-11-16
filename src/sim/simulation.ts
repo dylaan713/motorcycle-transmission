@@ -41,16 +41,48 @@ function integrate(omega: number, inertia: number, drive: number, resist: number
   return Math.abs(free) <= stop ? 0 : free - Math.sign(free) * stop;
 }
 
-/** Net torque on a body: resistance opposes motion, or cancels drive up to its size at rest. */
-const netTorque = (omega: number, drive: number, resist: number): number =>
-  omega !== 0 ? drive - Math.sign(omega) * resist : drive - clamp(drive, -resist, resist);
-
 /** Resistance torque actually applied over a step, as a signed fraction of resist (for dog torque). */
 function resistFraction(
   before: number, after: number, inertia: number, drive: number, resist: number,
 ): number {
   if (resist === 0) return 0;
   return (drive - (inertia * (after - before)) / DT) / resist;
+}
+
+/** One step of basket and downstream side turning together as one body. */
+interface TogetherStep {
+  omega0: number; // momentum-weighted common speed at the start of the step
+  omega: number; // common speed at the end
+  torque: number; // clutch torque on the downstream side that keeps it with the basket
+  kDown: number; // signed fraction of the downstream resistance applied
+}
+
+/**
+ * Basket and downstream side stepped as one body from their momentum-weighted speed. The clutch
+ * torque follows from the downstream side's own balance. While the pair turns, each side's
+ * resistance acts in full against the motion; when it ends at rest, the resistance is shared out
+ * so that the clutch carries as little as it can, each side reacting up to its own resistance.
+ * So a stopped engine's drag reacts against the plates rather than vanishing at rest.
+ */
+function togetherStep(
+  wBasket: number, wIn: number, jDown: number,
+  basketDrive: number, basketResist: number, downDrive: number, downResist: number,
+): TogetherStep {
+  const j = J_ENGINE + jDown;
+  const omega0 = (J_ENGINE * wBasket + jDown * wIn) / j;
+  const drive = basketDrive + downDrive;
+  const omega = integrate(omega0, j, drive, basketResist + downResist);
+  const downNeed = (jDown * (omega - wIn)) / DT - downDrive; // clutch torque less downstream resistance
+  let fDown: number;
+  if (omega !== 0) {
+    fDown = Math.sign(omega) * downResist;
+  } else {
+    const applied = drive - (j * (omega - omega0)) / DT; // total resistance that held the pair
+    fDown = clamp(
+      -downNeed, Math.max(-downResist, applied - basketResist), Math.min(downResist, applied + basketResist),
+    );
+  }
+  return { omega0, omega, torque: downNeed + fDown, kDown: downResist === 0 ? 0 : fDown / downResist };
 }
 
 /** A number with NaN mapped to 0 (±Infinity kept, for clamping); non-numbers take the fallback. */
@@ -206,50 +238,41 @@ function stepState(s: SimState, raw: Inputs): SimState {
   const wBasket = s.engine.omega / primaryRatio;
   const slip = wBasket - wIn;
   const capacity = clutchCapacity(u.clutchLever);
-  const basketNet = netTorque(wBasket, basketDrive, basketResist);
-  const downNet = netTorque(wIn, downDrive, downResist);
+  const together = togetherStep(wBasket, wIn, jDown, basketDrive, basketResist, downDrive, downResist);
   const reducedInertia = 1 / (1 / J_ENGINE + 1 / jDown);
-  // torque that holds the two sides at equal speed, and the one that also cancels the current slip
-  const holdTorque = (basketNet / J_ENGINE - downNet / jDown) * reducedInertia;
-  const lockTorque = holdTorque + (slip / DT) * reducedInertia;
+  // torque that cancels the current slip this step, and the part of it that only holds the speeds equal
+  const lockTorque = together.torque;
+  const holdTorque = lockTorque - (slip / DT) * reducedInertia;
   const c = clutchTorque(slip, lockTorque, capacity);
 
   // 6, 7. Integrate. A locked clutch makes basket and input shaft one body at their common speed.
   let clutchLocked = c.locked;
-  let wB: number;
-  let wD: number;
-  let wD0: number; // downstream speed at the start of the smooth part of the step
-  let kResist: number; // signed fraction of downstream resistance actually applied
-  let wDSmooth: number; // downstream speed at the end of the smooth part, before any stick impulse
-  if (c.locked) {
-    const j = J_ENGINE + jDown;
-    wD0 = (J_ENGINE * wBasket + jDown * wIn) / j;
-    wD = integrate(wD0, j, basketDrive + downDrive, basketResist + downResist);
-    wB = wD;
-    wDSmooth = wD;
-    kResist = resistFraction(wD0, wD, j, basketDrive + downDrive, basketResist + downResist);
-  } else {
-    wD0 = wIn;
-    wB = integrate(wBasket, J_ENGINE, basketDrive - c.torque, basketResist);
-    wD = integrate(wIn, jDown, downDrive + c.torque, downResist);
-    kResist = resistFraction(wIn, wD, jDown, downDrive + c.torque, downResist);
-    wDSmooth = wD;
-    if (slip !== 0 && Math.sign(wB - wD) !== Math.sign(slip) && Math.abs(holdTorque) <= capacity) {
-      // slip reversed within the step and static friction can hold: the plates stick at the
-      // momentum-weighted speed. If it cannot hold, the slip simply carries on the other way.
-      wB = wD = (J_ENGINE * wB + jDown * wD) / (J_ENGINE + jDown);
-      clutchLocked = true;
-    }
+  let wB = together.omega;
+  let wD = together.omega;
+  if (!c.locked) {
+    const slipB = integrate(wBasket, J_ENGINE, basketDrive - c.torque, basketResist);
+    const slipD = integrate(wIn, jDown, downDrive + c.torque, downResist);
+    // Slip reversed within the step and static friction can hold: the plates stick, and the step
+    // is taken as a locked one. If it cannot hold, the slip simply carries on the other way.
+    clutchLocked = slip !== 0 && Math.sign(slipB - slipD) !== Math.sign(slip) && Math.abs(holdTorque) <= capacity;
+    if (!clutchLocked) { wB = slipB; wD = slipD; }
   }
+  const transmitted = clutchLocked ? lockTorque : c.torque;
+  // downstream speed at the start of the smooth part of the step (after any sticking impulse), and
+  // the signed fraction of downstream resistance applied over it
+  const wD0 = clutchLocked ? together.omega0 : wIn;
+  const kResist = clutchLocked
+    ? together.kDown
+    : resistFraction(wIn, wD, jDown, downDrive + c.torque, downResist);
   const inputShaftOmega = wD;
   const outputShaftOmega = gear === null ? integrate(wOut, J_VEH, outDrive, outResist) : wD / ratio;
 
   // 8. Torque through the locked dog: what the output shaft needs beyond its own external torques.
-  // The impulse of plates sticking is left out: it is not a sustained load on the dog.
   let dogTorque = 0;
   const lockedSlider = lockedSliderOf(sliders);
   if (gear !== null && lockedSlider !== null) {
-    const alphaOut = (wDSmooth - wD0) / DT / ratio;
+    // the sticking impulse (wIn to wD0) is not a sustained load on the dog
+    const alphaOut = (wD - wD0) / DT / ratio;
     const atOutput = J_VEH * alphaOut - outDrive + kResist * outResist;
     dogTorque = PARAMS.sliders[lockedSlider].shaft === 'output' ? atOutput : atOutput / ratio;
   }
@@ -259,7 +282,7 @@ function stepState(s: SimState, raw: Inputs): SimState {
     engine: { omega: wB * primaryRatio, running, torque: engineTotal },
     clutch: {
       capacity,
-      torque: c.torque,
+      torque: transmitted,
       slip: clutchLocked ? 0 : wB - wD,
       locked: clutchLocked,
     },

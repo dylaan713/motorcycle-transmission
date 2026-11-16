@@ -99,3 +99,32 @@ test('dog torque on a slider-C gear is positive under drive and negative under e
     expect(run(inGear(g, 9000), inp(), 0.3).dogTorque).toBeLessThan(0);
   }
 });
+test('plates sticking never reverse a speed, and report the torque they actually carried', () => {
+  const sim = createSimulation();
+  sim.setState({ engine: { omega: 0, running: false }, inputShaftOmega: 0.37 });
+  sim.step(inp({ ignition: false, clutchLever: 0.13 }));
+  const s = sim.getState();
+  expect(s.engine.omega).toBeGreaterThanOrEqual(0);
+  expect(s.inputShaftOmega).toBeGreaterThanOrEqual(0);
+  expect(s.clutch.locked).toBe(true);
+  // the input shaft's change of momentum is the clutch torque plus at most its own friction
+  const needed = (PARAMS.inputShaft.inertia * (s.inputShaftOmega - 0.37)) / PARAMS.dt;
+  expect(s.clutch.torque).toBeGreaterThanOrEqual(needed - PARAMS.inputShaft.friction - 1e-9);
+  expect(s.clutch.torque).toBeLessThanOrEqual(needed + PARAMS.inputShaft.friction + 1e-9);
+  expect(Math.abs(s.clutch.torque)).toBeLessThan(s.clutch.capacity);
+});
+test('a weak clutch against a stopped engine slips steadily instead of chattering', () => {
+  // capacity (lever 0.68) is below the stopped engine's drag; the wheel is pushed by hand
+  const sim = inGear(1, 1000);
+  sim.setState({ engine: { omega: 0, running: false }, inputShaftOmega: 0, outputShaftOmega: 0 });
+  let transitions = 0;
+  let last = sim.getState().clutch.locked;
+  for (let i = 0; i < 4000; i++) {
+    sim.step(inp({ ignition: false, clutchLever: 0.68, handWheelTorque: 84 }));
+    const s = sim.getState();
+    if (s.clutch.locked !== last) transitions++;
+    last = s.clutch.locked;
+  }
+  expect(transitions).toBeLessThanOrEqual(2);
+  expect(sim.getState().inputShaftOmega).toBeGreaterThan(1);
+});
