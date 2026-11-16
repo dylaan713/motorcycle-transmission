@@ -16,6 +16,7 @@ export const PARAMS = {
     closedThrottle: { base: -4, perRpm: -0.0012 }, // N·m = base + perRpm * rpm
     idleRpm: 1300, idleMaxThrottle: 0.4, // tunable
     limiterRpm: 15000,
+    overRevDrag: 0.1, // N·m of extra drag per rpm above limiterRpm, when the wheel forces it; tunable
     stallRpm: 400, startRpm: 600, starterTorque: 15,
   },
   clutch: {

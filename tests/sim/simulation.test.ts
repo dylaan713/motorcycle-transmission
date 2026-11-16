@@ -128,3 +128,6 @@ test('a weak clutch against a stopped engine slips steadily instead of chatterin
   expect(transitions).toBeLessThanOrEqual(2);
   expect(sim.getState().inputShaftOmega).toBeGreaterThan(1);
 });
+test('idle settles at the idle speed in neutral', () => {
+  expect(Math.abs(toRpm(run(createSimulation(), inp(), 4).engine.omega) - PARAMS.engine.idleRpm)).toBeLessThan(40);
+});

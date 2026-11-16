@@ -166,3 +166,16 @@ test('autopilot strokes: none when the drum already sits at the target, full tow
   expect(toN).toBeLessThan(-0.4);                   // a half stroke, not a full one
   expect(toN).toBeGreaterThan(-0.8);
 });
+test('a forced clutchless downshift from sixth to first is resisted above the limiter', () => {
+  const pedal: Array<[number, number]> = [];
+  for (let i = 0; i < 6; i++) pedal.push(...pedalStroke(0.2 + i * 0.4, -1));
+  let maxRpm = 0;
+  const s = runSource(inGear(6, 9000), keyframes({ pedal }), 3.5, (st) => {
+    maxRpm = Math.max(maxRpm, toRpm(st.engine.omega));
+    expect(Number.isFinite(st.engine.omega + st.inputShaftOmega + st.outputShaftOmega)).toBe(true);
+    expect(st.engine.omega).toBeGreaterThanOrEqual(0);
+    expect(st.outputShaftOmega).toBeGreaterThanOrEqual(0);
+  });
+  expect(s.lockedGear).not.toBe(6);              // the strokes did force lower gears in
+  expect(maxRpm).toBeLessThan(17000);
+});

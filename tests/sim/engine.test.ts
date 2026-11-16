@@ -22,3 +22,8 @@ test('start and stall', () => {
   expect(engineTorque(0, false, 0, true, true)).toBeCloseTo(15, 9);
   expect(engineTorque(0, false, 1, true, false)).toBe(0);
 });
+test('above the limiter a forced over-rev meets steeply rising drag', () => {
+  expect(engineTorque(rpm(15000), true, 0, true, false)).toBeCloseTo(closedThrottleTorque(rpm(15000)), 9);
+  expect(engineTorque(rpm(16000), true, 0, true, false)).toBeLessThan(closedThrottleTorque(rpm(16000)) - 90);
+  expect(engineTorque(rpm(16000), false, 0, true, false)).toBeLessThan(-90);
+});

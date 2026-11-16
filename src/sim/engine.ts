@@ -23,20 +23,31 @@ export const fullThrottleTorque = (omega: number): number => {
 export const closedThrottleTorque = (omega: number): number =>
   E.closedThrottle.base + E.closedThrottle.perRpm * toRpm(omega);
 
-/** Net crank torque before the clutch load; includes idle control, limiter and starter. */
+/**
+ * Extra drag above the limiter (negative), rising steeply with the over-rev. The limiter only cuts
+ * fuel; this is what resists the wheel forcing the crank past it, as on a missed downshift.
+ */
+export const overRevTorque = (omega: number): number =>
+  -E.overRevDrag * Math.max(0, toRpm(omega) - E.limiterRpm);
+
+// Throttle that exactly holds idleRpm with no load, so the idle controller settles on idleRpm.
+const IDLE_FEEDFORWARD = -closedThrottleTorque(rpm(E.idleRpm))
+  / (fullThrottleTorque(rpm(E.idleRpm)) - closedThrottleTorque(rpm(E.idleRpm)));
+
+/** Net crank torque before the clutch load; includes idle control, limiter, over-rev drag and starter. */
 export function engineTorque(
   omega: number, running: boolean, throttle: number, ignition: boolean, starter: boolean,
 ): number {
   const closed = closedThrottleTorque(omega);
   if (running) {
     const idle = clamp(
-      (E.idleMaxThrottle * (E.idleRpm - toRpm(omega))) / 300, 0, E.idleMaxThrottle,
+      IDLE_FEEDFORWARD + (E.idleMaxThrottle * (E.idleRpm - toRpm(omega))) / 300, 0, E.idleMaxThrottle,
     );
     const eff = Math.max(clamp(throttle, 0, 1), idle);
-    return closed + eff * (fullThrottleTorque(omega) - closed);
+    return closed + eff * (fullThrottleTorque(omega) - closed) + overRevTorque(omega);
   }
   // Not running: drag only opposes forward rotation, so it never pushes the crank backwards.
-  const drag = omega > 0 ? closed : 0;
+  const drag = omega > 0 ? closed + overRevTorque(omega) : 0;
   return drag + (starter && ignition ? E.starterTorque : 0);
 }
 
