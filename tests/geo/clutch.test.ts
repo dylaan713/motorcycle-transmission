@@ -1,8 +1,9 @@
 import { test, expect } from 'vitest';
 import type * as THREE from 'three';
 import {
-  CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, plateStackOffsets, pressurePlate, springLength, steelPlate,
+  CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, hubEnd, plateStackOffsets, pressurePlate, springLength, steelPlate,
 } from '../../src/geo/clutch';
+import { DIM } from '../../src/geo/dimensions';
 import { expectCleanSolid, radii } from './helpers';
 
 const vertices = (g: THREE.BufferGeometry): { x: number; r: number; a: number }[] => {
@@ -68,6 +69,33 @@ test('springs span their length and fit between the pressure plate and the seat'
   expect(g.boundingBox!.min.x).toBeCloseTo(0, 5); expect(g.boundingBox!.max.x).toBeCloseTo(0.02, 5);
   expect(springLength(plateStackOffsets(0).pressurePlate) - springLength(plateStackOffsets(1).pressurePlate)).toBeCloseTo(15 * 0.0006, 9);
   expect(springLength(plateStackOffsets(1).pressurePlate)).toBeGreaterThan(CLUTCH.springSolidLength);
+});
+
+test('hub and pressure plate never intersect, engaged or fully released', () => {
+  const hub = vertices(clutchHub()), plate = vertices(pressurePlate());
+  const posts = Array.from({ length: 5 }, (_, k) => (2 * Math.PI * k) / 5)
+    .map((a) => [CLUTCH.springPitchRadius * Math.cos(a), CLUTCH.springPitchRadius * Math.sin(a)]);
+  const p = pressurePlate().getAttribute('position');
+  // the splined drum: the hub forward of its back wall, outside the posts and washers
+  const hubBody = hub.filter((v) => v.x > CLUTCH.hubFace + 1e-6 && v.r > CLUTCH.springPitchRadius + 0.0115);
+  const hubRadius = Math.max(...hubBody.map((v) => v.r));
+  for (const sep of [0, 1]) {
+    const x = plateStackOffsets(sep).pressurePlate;
+    // within the hub's radius the plate is only its cover, which must start beyond the hub's end
+    const coverStart = Math.min(...plate.filter((v) => v.r <= hubRadius + 1e-9).map((v) => v.x)) + x;
+    expect(Math.max(...hubBody.map((v) => v.x)), `separation ${sep}`).toBeLessThan(coverStart);
+    // where the plate reaches below the cover, it stays outside the hub's radius
+    const ring = plate.filter((v) => v.x + x < hubEnd() + 1e-9);
+    expect(Math.min(...ring.map((v) => v.r)), `separation ${sep}`).toBeGreaterThan(hubRadius);
+    // the washers are clear of the spring face
+    expect(CLUTCH.springSeat, `separation ${sep}`).toBeGreaterThan(x + CLUTCH.springFace + CLUTCH.springSolidLength);
+  }
+  // the posts pass through the cover's holes without touching it
+  for (let i = 0; i < p.count; i++) {
+    const d = Math.min(...posts.map(([y, z]) => Math.hypot(p.getY(i) - y, p.getZ(i) - z)));
+    expect(d).toBeGreaterThan(DIM.clutchHub.postRadius);
+  }
+  expect(hubEnd()).toBeCloseTo(plateStackOffsets(0).pressurePlate + DIM.pressurePlate.cover - DIM.clutchHub.endClearance, 12);
 });
 
 test('every generator in this file builds a clean closed solid', () => {

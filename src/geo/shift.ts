@@ -6,7 +6,7 @@ import { grooveCommand } from '../sim/shiftDrum';
 import type { SliderId } from '../sim/types';
 import { deg } from '../sim/units';
 import { DIM } from './dimensions';
-import { arc, capsule, circle, polar, rotated } from './outline';
+import { arc, capsule, circle, polar } from './outline';
 import { lathe, polygonCap, prism, toGeometry, transform, translate } from './mesh';
 import type { Solid } from './mesh';
 
@@ -32,7 +32,7 @@ const FORK_BOSS_LENGTH = 0.018;
 /** Distance from a fork's rod axis to the tip of its guide pin, m. */
 export const FORK_PIN_REACH = FORK_BOSS + 0.007;
 /** Detent arm: roller centre distance from the pivot, and roller radius, m. */
-export const DETENT_ARM = { length: 0.032, rollerRadius: 0.005 } as const;
+export const DETENT_ARM = DIM.detentArm;
 
 /** Axial offset of a slider's groove from its centre at a drum angle, m. */
 export const grooveAxialOffset = (slider: SliderId, drumAngle: number): number =>
@@ -73,7 +73,8 @@ export function shiftDrum(length: number, grooveCentres: Record<SliderId, number
     const deep = xs.map(inside);
     if (deep[0] || deep[AXIAL_STEPS]) throw new Error('a groove runs off the end of the drum');
     for (const c of centres) {
-      for (let i = 0; i < AXIAL_STEPS; i++) {
+      // never move the end columns: the caps are built on them
+      for (let i = 1; i + 1 < AXIAL_STEPS; i++) {
         const near = Math.abs(xs[i] - c) < grooveWidth / 2, nextNear = Math.abs(xs[i + 1] - c) < grooveWidth / 2;
         if (!near && nextNear) { xs[i] = c - grooveWidth / 2 - WALL_HALF; xs[i + 1] = c - grooveWidth / 2 + WALL_HALF; }
         if (near && !nextNear) { xs[i] = c + grooveWidth / 2 - WALL_HALF; xs[i + 1] = c + grooveWidth / 2 + WALL_HALF; }
@@ -128,32 +129,42 @@ export function starWheel(): BufferGeometry {
     return polar(starWheelRadiusAt(a), a);
   });
   const t = DIM.starWheel.thickness / 2;
-  return toGeometry([prism(outline, [circle(0.006, 24)], -t, t)]);
+  return toGeometry([prism(outline, [circle(DIM.starWheelMount.boreRadius, 24)], -t, t)]);
 }
 
 /** Pivot boss at the origin, arm plate along +y, roller at DETENT_ARM.length in the plane x = 0. */
 export function detentArm(): BufferGeometry {
-  const L = DETENT_ARM.length, rr = DETENT_ARM.rollerRadius;
-  const plate = prism(capsule(0.0065, 0.0055, L), [], 0.003, 0.007);
-  const boss = lathe([[0.003, 0], [0.003, 0.0065], [0.011, 0.0065], [0.011, 0]], 24);
+  const { length: L, rollerRadius: rr, pivotRadius: rp } = DETENT_ARM;
+  // the boss is larger than the plate's pivot end so their round faces never coincide
+  const plate = prism(capsule(rp - 0.001, 0.0055, L), [], 0.003, 0.007);
+  const boss = lathe([[0.0025, 0], [0.0025, rp], [0.011, rp], [0.011, 0]], 24); // its faces clear the plate's
   const roller = translate(lathe([[-0.003, 0], [-0.003, rr], [0.0035, rr], [0.0035, 0]], 20), 0, L, 0);
   return toGeometry([plate, boss, roller]);
 }
 
-/** Ratchet pawl on the shift shaft: an arm along +y ending in two hooks that catch the drum's pins. */
+/**
+ * Ratchet pawl on the shift shaft: one Y-shaped plate along +y, its two hooks catching the drum's
+ * pins, built as a single outline so no faces coincide.
+ */
 export function shiftPawl(): BufferGeometry {
-  const t = 0.004, arm = 0.022;
-  const hook = (a: number): Solid => prism(
-    rotated(capsule(0.004, 0.0025, 0.011), a).map((p) => p.add(new Vector2(arm, 0))), [], 0, t);
-  const boss = lathe([[-0.003, 0], [-0.003, 0.007], [t + 0.003, 0.007], [t + 0.003, 0]], 24);
-  return toGeometry([prism(capsule(0.007, 0.0045, arm), [], 0, t), hook(deg(35)), hook(deg(-35)), boss]);
+  const t = 0.004, arm = 0.022, r1 = 0.007, root = 0.004, hookLength = 0.011, tip = 0.0025;
+  const spread = deg(35), crotch = new Vector2(arm + 0.006, 0);
+  const tipCentre = polar(hookLength, -spread).add(new Vector2(arm, 0));
+  // lower hook, outer side then round its tip into the crotch; the upper hook is its mirror image
+  const lower = [polar(root, -spread - Math.PI / 2).add(new Vector2(arm, 0)),
+    ...arc(tip, -spread - Math.PI / 2, -spread + Math.PI / 2, undefined, tipCentre)];
+  const upper = lower.map((p) => new Vector2(p.x, -p.y)).reverse();
+  const outline = [...arc(r1, Math.PI / 2, (3 * Math.PI) / 2), ...lower, crotch, ...upper];
+  const boss = lathe([[-0.003, 0], [-0.003, r1 + 0.001], [t + 0.003, r1 + 0.001], [t + 0.003, 0]], 24); // wider than the arm's end
+  return toGeometry([prism(outline, [], 0, t), boss]);
 }
 
 /** Gear pedal: clamp boss on the shift shaft at the origin, lever along +y, toe peg out along +x. */
 export function pedalLever(): BufferGeometry {
-  const L = 0.15, peg = 0.007, c = 0.001;
-  const boss = lathe([[-0.012, 0], [-0.012, 0.011], [0.012, 0.011], [0.012, 0]], 32);
-  const lever = prism(capsule(0.010, 0.007, L), [], -0.003, 0.003);
-  const toe = translate(lathe([[0, 0], [0, peg], [0.04 - c, peg], [0.04, peg - c], [0.04, 0]], 20), 0, L, 0);
+  const { length: L, bossRadius: rb, bossLength, pegRadius: peg, pegLength } = DIM.pedal;
+  const c = 0.001, hb = bossLength / 2;
+  const boss = lathe([[-hb, 0], [-hb, rb], [hb, rb], [hb, 0]], 32);
+  const lever = prism(capsule(rb - 0.001, 0.007, L), [], -0.003, 0.003);
+  const toe = translate(lathe([[0, 0], [0, peg], [pegLength - c, peg], [pegLength, peg - c], [pegLength, 0]], 20), 0, L, 0);
   return toGeometry([boss, lever, toe]);
 }

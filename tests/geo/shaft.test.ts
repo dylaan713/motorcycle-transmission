@@ -1,5 +1,7 @@
 import { test, expect } from 'vitest';
 import { plainShaft, splinedShaft } from '../../src/geo/shaft';
+import { GEAR_PITCH } from '../../src/model/geometry';
+import { DIM } from '../../src/geo/dimensions';
 import { expectCleanSolid, radii } from './helpers';
 
 test('shafts lie along x with the stated length', () => {
@@ -23,4 +25,8 @@ test('splines are cut to their depth and the plain shaft is its radius', () => {
 test('every generator in this file builds a clean closed solid', () => {
   expectCleanSolid(splinedShaft({ radius: 0.011, length: 0.2, splines: 6, splineDepth: 0.001 }), 'splined shaft');
   expectCleanSolid(plainShaft({ radius: 0.0125, length: 0.15 }), 'plain shaft');
+});
+
+test('gear pitch has one source of truth', () => {
+  expect(DIM.gearPitch).toBe(GEAR_PITCH);
 });

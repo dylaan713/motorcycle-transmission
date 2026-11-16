@@ -63,6 +63,13 @@ test('the fork reaches its collar and its pin points the other way', () => {
   expect(inside).toBe(0);
 });
 
+test('a groove edge in the first axial cell leaves the drum ends where the caps are', () => {
+  // B's groove reaches x = -0.0595 at its -4 mm end, inside the first 1.5 mm cell of a 0.12 m drum
+  const g = shiftDrum(0.12, { A: 0.0, B: -0.0525, C: 0.03 }); g.computeBoundingBox();
+  expect(g.boundingBox!.min.x).toBeCloseTo(-0.06, 7); expect(g.boundingBox!.max.x).toBeCloseTo(0.06, 7);
+  expectCleanSolid(g, 'drum with a groove in the end cell');
+});
+
 test('every generator in this file builds a clean closed solid', () => {
   const all: [string, THREE.BufferGeometry][] = [
     ['drum', shiftDrum(0.12, { A: -0.03, B: 0.0, C: 0.03 })], ['fork', shiftFork({ reach: 0.06, collarRadius: 0.03 })],

@@ -103,7 +103,7 @@ export function chainLink(inner: boolean): BufferGeometry {
 
 const W = DIM.wheel;
 const WHEEL_SEGMENTS = 96;
-const SPOKES = 5;
+const WP = DIM.wheelParts;
 
 /** The rear wheel centred on its axle along x: [tyre, rim with cast spokes, hub]. */
 export function rearWheel(): BufferGeometry[] {
@@ -116,16 +116,16 @@ export function rearWheel(): BufferGeometry[] {
   });
   const tyre = toGeometry([lathe(section, WHEEL_SEGMENTS)]);
 
-  const rimIn = W.rimRadius - 0.015, well = W.rimRadius - 0.003, flange = W.rimRadius + 0.011;
-  const fx = a - 0.005, lip = 0.006;
+  const rimIn = W.rimRadius - WP.rimDepth, well = W.rimRadius - 0.003, flange = W.rimRadius + WP.flangeHeight;
+  const fx = a - WP.flangeInset, lip = 0.006;
   const rim = lathe([[-fx, rimIn], [-fx, flange], [-fx + lip, flange], [-fx + lip, well],
     [fx - lip, well], [fx - lip, flange], [fx, flange], [fx, rimIn]], WHEEL_SEGMENTS);
   const spoke = prism([new Vector2(W.hubRadius - 0.004, -0.014), new Vector2(rimIn + 0.004, -0.008),
-    new Vector2(rimIn + 0.004, 0.008), new Vector2(W.hubRadius - 0.004, 0.014)], [], -0.012, 0.012);
-  const spokes = Array.from({ length: SPOKES }, (_, k) => rotateX(spoke, (TWO_PI * k) / SPOKES));
+    new Vector2(rimIn + 0.004, 0.008), new Vector2(W.hubRadius - 0.004, 0.014)], [], -WP.spokeHalfThickness, WP.spokeHalfThickness);
+  const spokes = Array.from({ length: WP.spokes }, (_, k) => rotateX(spoke, (TWO_PI * k) / WP.spokes));
   const rimAndSpokes = toGeometry([rim, ...spokes]);
 
-  const hx = 0.06, axle = 0.012;
+  const hx = WP.hubHalfWidth, axle = WP.axleRadius;
   const hub = toGeometry([lathe([[-hx, axle], [-hx, W.hubRadius - 0.008], [-hx + 0.008, W.hubRadius],
     [hx - 0.008, W.hubRadius], [hx, W.hubRadius - 0.008], [hx, axle]], 48)]);
   return [tyre, rimAndSpokes, hub];

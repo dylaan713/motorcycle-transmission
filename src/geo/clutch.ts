@@ -16,38 +16,30 @@ import type { Solid } from './mesh';
  */
 
 const C = DIM.clutch;
+const B = DIM.basket;
+const H = DIM.clutchHub;
+const PP = DIM.pressurePlate;
+const S = DIM.spring;
 const PRIMARY_DRIVEN_TEETH = 76;
 const ROUND = 0.0015;            // polygon chord for round edges, m
-const BASKET_BORE = 0.020;       // through the back and the ring gear, m
-const BASKET_WALL = 0.0065;      // finger thickness, m
-const FINGER_INNER = C.basketOuterRadius - BASKET_WALL;
-const TAB_OUTER = 0.0765;        // friction plate tabs, inside the basket's outer radius
-const TAB_HALF_WIDTH = 0.0045;   // m, at the tab's mid radius
-const SLOT_CLEARANCE = 0.0008;   // each side of a tab in its slot, m
-const TABS = 12;
-const STEEL_OUTER = 0.0695;
-const HUB_SPLINES = 18;
-const HUB_ROOT = C.hubRadius - 0.003;
-const STEEL_TOOTH_TIP = HUB_ROOT + 0.0005;
+const FINGER_INNER = C.basketOuterRadius - B.wall;
+const HUB_ROOT = C.hubRadius - H.splineDepth;
+const STEEL_TOOTH_TIP = HUB_ROOT + DIM.steelPlate.toothClearance;
 const HUB_BORE = DIM.inputShaftRadius;
-const POST_RADIUS = 0.0035;
-const SPRING_WIRE = 0.0011;
-const SPRING_TURNS = 5;
-const SPRING_DEAD_TURNS = 0.75;  // closed turns at each end
 
 export const CLUTCH = {
   /** Inner face of the basket's back, where the fingers start, clutch frame x. */
-  fingerBase: 0.006,
+  fingerBase: B.floor,
   /** The hub's back wall, which the first friction plate is clamped against, clutch frame x. */
-  hubFace: 0.009,
+  hubFace: H.face,
   /** Where each spring's far end seats under its post's washer, clutch frame x. */
-  springSeat: 0.080,
+  springSeat: H.springSeat,
   /** Pressure plate face the springs push on, in the pressure plate's own x. */
-  springFace: 0.0115,
+  springFace: PP.springFace,
   /** Spring and post axes sit on this radius, spring k at angle k × 2π / springCount. */
-  springPitchRadius: 0.024,
+  springPitchRadius: H.postPitchRadius,
   /** Length of a spring with every coil closed, m. */
-  springSolidLength: (SPRING_TURNS + 1) * 2 * SPRING_WIRE,
+  springSolidLength: (S.turns + 1) * 2 * S.wire,
 } as const;
 
 /**
@@ -76,11 +68,11 @@ const annulus = (rIn: number, rOut: number, x0: number, x1: number): Solid => pr
 const springAngles = Array.from({ length: C.springCount }, (_, k) => (2 * Math.PI * k) / C.springCount);
 
 export function clutchBasket(): BufferGeometry {
-  const ringGear = prism(gearProfile(PRIMARY_DRIVEN_TEETH, MODULE), [ring(BASKET_BORE)], -DIM.primary.faceWidth, 0);
-  const back = annulus(BASKET_BORE, C.basketOuterRadius, 0, CLUTCH.fingerBase);
-  const pitch = (2 * Math.PI) / TABS;
-  const slotHalf = (TAB_HALF_WIDTH + SLOT_CLEARANCE) / ((C.plateOuterRadius + TAB_OUTER) / 2);
-  const fingers = Array.from({ length: TABS }, (_, k) => {
+  const ringGear = prism(gearProfile(PRIMARY_DRIVEN_TEETH, MODULE), [ring(B.boreRadius)], -DIM.primary.faceWidth, 0);
+  const back = annulus(B.boreRadius, C.basketOuterRadius, 0, CLUTCH.fingerBase);
+  const pitch = (2 * Math.PI) / B.tabs;
+  const slotHalf = (B.tabHalfWidth + B.slotClearance) / ((C.plateOuterRadius + B.tabOuterRadius) / 2);
+  const fingers = Array.from({ length: B.tabs }, (_, k) => {
     const a0 = k * pitch + slotHalf, a1 = (k + 1) * pitch - slotHalf;
     const outline = [...arc(C.basketOuterRadius, a0, a1), ...arc(FINGER_INNER, a1, a0)];
     return prism(outline, [], CLUTCH.fingerBase, CLUTCH.fingerBase + C.basketDepth);
@@ -89,40 +81,48 @@ export function clutchBasket(): BufferGeometry {
 }
 
 export function frictionPlate(): BufferGeometry {
-  const tabFrac = (TAB_HALF_WIDTH / ((C.plateOuterRadius + TAB_OUTER) / 2)) * (TABS / Math.PI);
-  const outline = castellated(C.plateOuterRadius, TAB_OUTER, TABS, tabFrac);
+  const tabFrac = (B.tabHalfWidth / ((C.plateOuterRadius + B.tabOuterRadius) / 2)) * (B.tabs / Math.PI);
+  const outline = castellated(C.plateOuterRadius, B.tabOuterRadius, B.tabs, tabFrac);
   return toGeometry([prism(outline, [ring(C.plateInnerRadius)], -C.frictionThickness / 2, C.frictionThickness / 2)]);
 }
 
 export function steelPlate(): BufferGeometry {
   // inner teeth (the low lands) centred between the hub's splines, 0.4 of a spline pitch wide
-  const hole = castellated(STEEL_TOOTH_TIP, C.plateInnerRadius, HUB_SPLINES, 0.6);
-  return toGeometry([prism(ring(STEEL_OUTER), [hole], -C.steelThickness / 2, C.steelThickness / 2)]);
+  const hole = castellated(STEEL_TOOTH_TIP, C.plateInnerRadius, H.splines, 0.6);
+  return toGeometry([prism(ring(DIM.steelPlate.outerRadius), [hole], -C.steelThickness / 2, C.steelThickness / 2)]);
 }
 
+/** End of the hub's splines, clutch frame x: just short of the pressure plate's cover when engaged. */
+export const hubEnd = (): number => plateStackOffsets(0).pressurePlate + PP.cover - H.endClearance;
+
+/**
+ * The inner hub: one turned body (back wall, web and boss) with the splined drum standing on its
+ * back wall, five spring posts and their washers. Solids touch only face to opposite face.
+ */
 export function clutchHub(): BufferGeometry {
-  const back = 0.0065, end = 0.051;
-  const splines = prism(castellated(HUB_ROOT, C.hubRadius, HUB_SPLINES, 0.5), [ring(0.036)], back, end);
-  const wall = annulus(0.040, C.plateOuterRadius - 0.002, back, CLUTCH.hubFace);
-  const web = annulus(HUB_BORE, 0.037, back, 0.016);
-  const boss = annulus(HUB_BORE, 0.017, 0.016, 0.030);
-  const postSegments = segmentsFor(POST_RADIUS, ROUND, 16);
+  const body = lathe([[H.back, HUB_BORE], [H.back, H.wallRadius], [H.face, H.wallRadius], [H.face, H.bodyRadius],
+    [H.webTop, H.bodyRadius], [H.webTop, H.bossRadius], [H.bossEnd, H.bossRadius], [H.bossEnd, HUB_BORE]],
+  segmentsFor(H.wallRadius, 2 * ROUND)); // 2.5° steps: smooth under the crease angle, half the triangles
+  const splines = prism(castellated(HUB_ROOT, C.hubRadius, H.splines, 0.5), [ring(H.bodyRadius)], H.face, hubEnd());
+  const postSegments = segmentsFor(H.postRadius, ROUND, 16);
+  const seatEnd = H.springSeat + H.washerThickness;
   const posts = springAngles.flatMap((a) => {
-    const p = polar(CLUTCH.springPitchRadius, a);
-    const post = lathe([[0.015, 0], [0.015, POST_RADIUS], [CLUTCH.springSeat, POST_RADIUS], [CLUTCH.springSeat, 0]], postSegments);
-    const washer = lathe([[CLUTCH.springSeat, 0], [CLUTCH.springSeat, 0.0095], [CLUTCH.springSeat + 0.0025, 0.0095],
-      [CLUTCH.springSeat + 0.0025, 0]], 24);
+    const p = polar(H.postPitchRadius, a);
+    const post = lathe([[H.postStart, 0], [H.postStart, H.postRadius], [H.springSeat, H.postRadius], [H.springSeat, 0]], postSegments);
+    const washer = lathe([[H.springSeat, 0], [H.springSeat, H.washerRadius], [seatEnd, H.washerRadius], [seatEnd, 0]], 24);
     return [translate(post, 0, p.x, p.y), translate(washer, 0, p.x, p.y)];
   });
-  return toGeometry([splines, wall, web, boss, ...posts]);
+  return toGeometry([body, splines, ...posts]);
 }
 
 /** A dished pressure plate: clamping ring, a wall clearing the hub's end, and the spring cover. */
 export function pressurePlate(): BufferGeometry {
-  const rOut = C.plateOuterRadius - 0.001, rIn = C.hubRadius + 0.0015, wall = 0.0505, cover = 0.0075;
-  const dish = lathe([[0, rIn], [0, rOut], [0.0045, rOut], [0.0045, wall], [cover, wall], [cover, rIn]], segmentsFor(rOut, ROUND));
-  const holes = [ring(0.009), ...springAngles.map((a) => circle(POST_RADIUS + 0.001, 16, 0, polar(CLUTCH.springPitchRadius, a)))];
-  return toGeometry([dish, prism(ring(wall), holes, cover, CLUTCH.springFace)]);
+  const rOut = C.plateOuterRadius - 0.001, rIn = C.hubRadius + PP.ringInnerClearance;
+  const dish = lathe([[0, rIn], [0, rOut], [PP.ringThickness, rOut], [PP.ringThickness, PP.wallRadius],
+    [PP.cover, PP.wallRadius], [PP.cover, rIn]], segmentsFor(rOut, ROUND));
+  const holes = [ring(PP.liftHoleRadius),
+    ...springAngles.map((a) => circle(H.postRadius + PP.postHoleClearance, 16, 0, polar(H.postPitchRadius, a)))];
+  return toGeometry([dish, prism(ring(PP.wallRadius), holes, PP.cover, PP.springFace)]);
 }
 
 /**
@@ -130,17 +130,17 @@ export function pressurePlate(): BufferGeometry {
  * dead turns at each end.
  */
 export function clutchSpring(length: number): BufferGeometry {
-  const steps = 16 * SPRING_TURNS;
-  const closed = 2 * SPRING_WIRE;
-  const active = SPRING_TURNS - 2 * SPRING_DEAD_TURNS;
-  const pitch = Math.max(closed, (length - 2 * SPRING_WIRE - 2 * SPRING_DEAD_TURNS * closed) / active);
-  const xAt = (u: number): number => SPRING_WIRE + closed * Math.min(u, SPRING_DEAD_TURNS)
-    + pitch * Math.min(Math.max(u - SPRING_DEAD_TURNS, 0), active)
-    + closed * Math.max(u - SPRING_DEAD_TURNS - active, 0);
+  const steps = 16 * S.turns;
+  const closed = 2 * S.wire;
+  const active = S.turns - 2 * S.deadTurns;
+  const pitch = Math.max(closed, (length - 2 * S.wire - 2 * S.deadTurns * closed) / active);
+  const xAt = (u: number): number => S.wire + closed * Math.min(u, S.deadTurns)
+    + pitch * Math.min(Math.max(u - S.deadTurns, 0), active)
+    + closed * Math.max(u - S.deadTurns - active, 0);
   const path = Array.from({ length: steps + 1 }, (_, i) => {
-    const u = (SPRING_TURNS * i) / steps;
+    const u = (S.turns * i) / steps;
     const a = 2 * Math.PI * u;
     return new Vector3(xAt(u), C.springRadius * Math.cos(a), C.springRadius * Math.sin(a));
   });
-  return toGeometry([tube(path, SPRING_WIRE, 10)]); // 36° facets, inside the crease angle: shades round
+  return toGeometry([tube(path, S.wire, 10)]); // 36° facets, inside the crease angle: shades round
 }

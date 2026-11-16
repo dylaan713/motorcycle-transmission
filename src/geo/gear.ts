@@ -20,8 +20,25 @@ const FILLET = 0.38;
 /** Bore polygon chord, m. */
 const BORE_CHORD = 0.0015;
 
-/** Rotation that puts a tooth space at angle 0, so two gears built at angle 0 mesh. */
-export const meshPhase = (teeth: number): number => Math.PI / teeth;
+/**
+ * Static rotation of gear B, about its own axis and in the shared angle convention, that makes it
+ * mesh with gear A when A is at rotation 0 (tooth 0 on angle 0) and B's centre lies at angle psi
+ * from A's centre. Wrapped to [0, 2π / zB). When A then turns by a, B turns to phase - a × zA / zB.
+ *
+ * Derivation. Rolling contact pairs material points across the line of centres: once A has turned
+ * by a and B by -a zA / zB, A's material at angle psi - a and B's at psi + π + a zA / zB both sit on
+ * the line, so A's point at psi - ε meets B's point at psi + π + ε zA / zB. A's tooth k (centre
+ * 2πk / zA) has ε = psi - 2πk / zA, and must meet the centre of a tooth space of B, which before
+ * the phase is at π / zB + 2πj / zB. So phase = psi + π + (psi - 2πk / zA) zA / zB - π / zB - 2πj / zB,
+ * and the k and j terms are whole tooth pitches of B: phase ≡ psi (1 + zA / zB) + π - π / zB.
+ * For psi = 0 that is no rotation when zB is odd and half a tooth when it is even.
+ */
+export function meshPhase(zA: number, zB: number, psi: number): number {
+  const pitch = (2 * Math.PI) / zB;
+  const phase = psi * (1 + zA / zB) + Math.PI - Math.PI / zB;
+  const w = ((phase % pitch) + pitch) % pitch;
+  return w >= pitch ? 0 : w;
+}
 
 /**
  * Right half of tooth 0 (negative angles), from the middle of the tooth space at -π/teeth to the

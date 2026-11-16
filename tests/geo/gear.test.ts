@@ -2,7 +2,9 @@ import { test, expect } from 'vitest';
 import type * as THREE from 'three';
 import { dogRing, gearProfile, meshPhase, spurGear } from '../../src/geo/gear';
 import { sprocket, sprocketOutline, sprocketPitchRadius } from '../../src/geo/sprocket';
-import { expectCleanSolid, radii } from './helpers';
+import { CENTRE_DISTANCE, MODULE } from '../../src/model/geometry';
+import { PARAMS } from '../../src/sim/params';
+import { expectCleanSolid, meshPenetration, radii } from './helpers';
 
 const angleOf = (p: THREE.Vector2): number => Math.atan2(p.y, p.x);
 
@@ -105,8 +107,46 @@ test('flanks are true involutes of the base circle above it', () => {
   }
 });
 
-test('mesh phase puts a tooth space at angle 0', () => {
-  expect(meshPhase(37)).toBeCloseTo(Math.PI / 37, 12);
+// Line-of-centres directions: B straight along +y, the layout's output shaft 35° below horizontal
+// toward -z, and an arbitrary one.
+const PSIS = [0, -Math.PI / 2 - (35 * Math.PI) / 180, 1.234];
+const PAIRS: [number, number][] = [[13, 37], [17, 33], [19, 31], [21, 29], [23, 27], [24, 26]];
+// 0.02 mm: the 13/37 pair has a known ~3 µm overlap at the 13T's radial undercut flank
+const MESH_TOLERANCE = 0.00002;
+
+test('every gearbox pair meshes without penetration through a full tooth pitch', () => {
+  for (const [zA, zB] of PAIRS) {
+    const A = gearProfile(zA, MODULE), B = gearProfile(zB, MODULE);
+    for (const psi of PSIS) {
+      const depth = meshPenetration(A, zA, B, zB, CENTRE_DISTANCE, psi, meshPhase(zA, zB, psi));
+      expect(depth, `${zA}/${zB} at psi ${psi.toFixed(3)}`).toBeLessThan(MESH_TOLERANCE);
+    }
+  }
+});
+
+test('the primary pair meshes without penetration', () => {
+  const [zA, zB] = [PARAMS.primary.drive, PARAMS.primary.driven];
+  const A = gearProfile(zA, MODULE), B = gearProfile(zB, MODULE);
+  for (const psi of PSIS) {
+    const depth = meshPenetration(A, zA, B, zB, ((zA + zB) * MODULE) / 2, psi, meshPhase(zA, zB, psi));
+    expect(depth, `primary at psi ${psi.toFixed(3)}`).toBeLessThan(MESH_TOLERANCE);
+  }
+});
+
+test('the penetration check catches a pair half a tooth out of phase', () => {
+  for (const [zA, zB] of [[13, 37], [24, 26]]) {
+    const psi = PSIS[1];
+    const depth = meshPenetration(gearProfile(zA, MODULE), zA, gearProfile(zB, MODULE), zB, CENTRE_DISTANCE, psi,
+      meshPhase(zA, zB, psi) + Math.PI / zB);
+    expect(depth, `${zA}/${zB}`).toBeGreaterThan(0.001);
+  }
+});
+
+test('mesh phase is wrapped to one tooth pitch of B', () => {
+  for (const [zA, zB] of PAIRS) for (const psi of PSIS) {
+    const phase = meshPhase(zA, zB, psi);
+    expect(phase).toBeGreaterThanOrEqual(0); expect(phase).toBeLessThan((2 * Math.PI) / zB);
+  }
 });
 
 test('sprocket outline: tooth count, root on the roller seat, tooth 0 centred on angle 0', () => {
