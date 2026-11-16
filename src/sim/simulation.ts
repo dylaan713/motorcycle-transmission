@@ -1,16 +1,16 @@
 import { PARAMS } from './params';
 import { clamp, deg, rpm } from './units';
 import {
-  finalRatio, freeGearOmega, gearRatio, outputOmegaFromRoad, primaryRatio, reflectedVehicleInertia,
+  finalRatio, gearRatio, outputOmegaFromRoad, primaryRatio, reflectedVehicleInertia,
   roadSpeed,
 } from './kinematics';
 import { engineTorque, nextRunning } from './engine';
 import { clutchCapacity, clutchTorque } from './clutch';
 import { detentTorque, grooveCommand, pawlTorque, seatedDetent, stepDrum } from './shiftDrum';
-import { engageSpeeds, stepSlider, targetGear } from './dogs';
+import { dogPhase, dogTurn, engageSpeeds, moveSlider, sideOf, targetGear } from './dogs';
 import {
-  NEUTRAL_INPUTS, type DeepPartial, type GearId, type Inputs, type SimState, type SliderId,
-  type SliderState,
+  NEUTRAL_INPUTS, type DeepPartial, type DogSide, type GearId, type Inputs, type ShaftAngles,
+  type SimSliderState, type SimState, type SliderId,
 } from './types';
 
 export interface Simulation {
@@ -118,7 +118,9 @@ export function sanitizeInputs(raw: Partial<Inputs>): Inputs {
   };
 }
 
-const freeSlider = (): SliderState => ({ x: 0, phi: 0, locked: null, blocked: false });
+const freeSlider = (): SimSliderState => ({
+  x: 0, phi: 0, locked: null, blocked: false, side: 'neg', phase: { neg: 0, pos: 0 },
+});
 
 function initialState(): SimState {
   const drumAngle = deg(PARAMS.drum.detents.N);
@@ -134,8 +136,11 @@ function initialState(): SimState {
     sliders: { A: freeSlider(), B: freeSlider(), C: freeSlider() },
     lockedGear: null,
     dogTorque: 0,
+    angles: { crank: 0, input: 0, output: 0 },
   };
 }
+
+const cloneSlider = (s: SimSliderState): SimSliderState => ({ ...s, phase: { ...s.phase } });
 
 function cloneState(s: SimState): SimState {
   return {
@@ -144,7 +149,8 @@ function cloneState(s: SimState): SimState {
     clutch: { ...s.clutch },
     drum: { ...s.drum },
     pedal: { ...s.pedal },
-    sliders: { A: { ...s.sliders.A }, B: { ...s.sliders.B }, C: { ...s.sliders.C } },
+    sliders: { A: cloneSlider(s.sliders.A), B: cloneSlider(s.sliders.B), C: cloneSlider(s.sliders.C) },
+    angles: { ...s.angles },
   };
 }
 
@@ -161,30 +167,35 @@ function deepMerge<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
-const lockedGearOf = (sliders: Record<SliderId, SliderState>): GearId | null => {
+const lockedGearOf = (sliders: Record<SliderId, SimSliderState>): GearId | null => {
   for (const id of SLIDER_IDS) if (sliders[id].locked !== null) return sliders[id].locked;
   return null;
 };
-const lockedSliderOf = (sliders: Record<SliderId, SliderState>): SliderId | null =>
+const lockedSliderOf = (sliders: Record<SliderId, SimSliderState>): SliderId | null =>
   SLIDER_IDS.find((id) => sliders[id].locked !== null) ?? null;
 
 /**
- * Slider's shaft speed minus the speed of the free gear it is heading for. The gear is picked by
- * dogs.targetGear (same sign rule and dead band) from the groove command, or from x when the
- * command is near centre; 0 when neither picks one.
+ * The side whose gear a slider's dogs face: the locked gear's while locked; otherwise the gear
+ * dogs.targetGear picks (same sign rule and dead band) from the groove command, or from x when the
+ * command is near centre; otherwise the side it last headed for.
  */
-function relativeOmega(id: SliderId, x: number, command: number, wIn: number, wOut: number): number {
-  const gear = targetGear(id, command) ?? targetGear(id, x);
-  if (gear === null) return 0;
-  const shaft = PARAMS.sliders[id].shaft === 'input' ? wIn : wOut;
-  return shaft - freeGearOmega(gear, wIn, wOut);
+function headingSide(id: SliderId, prev: SimSliderState, command: number): DogSide {
+  const gear = prev.locked ?? targetGear(id, command) ?? targetGear(id, prev.x);
+  return gear === null ? prev.side : sideOf(id, gear);
 }
+
+/** Shaft angles one step on, from the speeds at the start of the step. */
+const advanceAngles = (s: SimState): ShaftAngles => ({
+  crank: s.angles.crank + s.engine.omega * DT,
+  input: s.angles.input + s.inputShaftOmega * DT,
+  output: s.angles.output + s.outputShaftOmega * DT,
+});
 
 /**
  * The drum goes solid when moving it would make some fork lag its groove by more than
  * forkCompliance and by more than it already does: a loaded or face-blocked dog holds the drum.
  */
-function forkBlocks(sliders: Record<SliderId, SliderState>, oldAngle: number, newAngle: number): boolean {
+function forkBlocks(sliders: Record<SliderId, SimSliderState>, oldAngle: number, newAngle: number): boolean {
   return SLIDER_IDS.some((id) => {
     const x = sliders[id].x;
     const lagNew = Math.abs(grooveCommand(id, newAngle) - x);
@@ -203,15 +214,20 @@ function stepState(s: SimState, raw: Inputs): SimState {
   if (forkBlocks(s.sliders, s.drum.angle, moved.angle)) moved = { angle: s.drum.angle, omega: 0 };
   const drum = { ...moved, detent: seatedDetent(moved.angle) };
 
-  // 3. Sliders, with speed matching when a dog drops in.
+  // 3. Sliders, with speed matching when a dog drops in. Shaft angles advance on the speeds at the
+  // start of the step and stay continuous through a dog's speed snap; each slider's dog angle is
+  // read off them, so alignment is tested on the same angles a drawing shows.
+  const angles = advanceAngles(s);
   let wIn = s.inputShaftOmega;
   let wOut = s.outputShaftOmega;
-  const sliders = {} as Record<SliderId, SliderState>;
+  const sliders = {} as Record<SliderId, SimSliderState>;
   for (const id of SLIDER_IDS) {
     const prev = s.sliders[id];
     const cmd = grooveCommand(id, drum.angle);
-    const r = stepSlider(id, prev, cmd, relativeOmega(id, prev.x, cmd, wIn, wOut), s.dogTorque, DT);
-    sliders[id] = r.state;
+    const side = headingSide(id, prev, cmd);
+    const phi = dogPhase(id, side, angles, prev.phase[side]);
+    const r = moveSlider(id, prev, cmd, phi, s.dogTorque, DT);
+    sliders[id] = { ...r.state, side, phase: { ...prev.phase } };
     if (r.justLocked !== null) {
       ({ inputOmega: wIn, outputOmega: wOut } = engageSpeeds(r.justLocked, wIn, wOut, J_IN, J_VEH));
     }
@@ -301,7 +317,25 @@ function stepState(s: SimState, raw: Inputs): SimState {
     sliders,
     lockedGear: gear,
     dogTorque,
+    angles,
   };
+}
+
+/**
+ * phi is derived from the shaft angles. A patched phi sets both dog rings' phase offsets so that the
+ * derived angle equals it at this instant, against either gear; the side follows a patched lock or
+ * x. Then phi is re-derived, so patched angles or phases show in it too.
+ */
+function patchDogPhase(id: SliderId, s: SimState, phi: number | undefined): void {
+  const sl = s.sliders[id];
+  const gear = sl.locked ?? targetGear(id, sl.x);
+  if (gear !== null) sl.side = sideOf(id, gear);
+  if (phi !== undefined) {
+    for (const side of ['neg', 'pos'] as const) {
+      sl.phase[side] = phi - dogTurn(id, side, s.angles);
+    }
+  }
+  sl.phi = dogPhase(id, sl.side, s.angles, sl.phase[sl.side]);
 }
 
 export function createSimulation(): Simulation {
@@ -319,6 +353,7 @@ export function createSimulation(): Simulation {
       merged.roadSpeed = roadSpeed(merged.outputShaftOmega);
       merged.lockedGear = lockedGearOf(merged.sliders);
       merged.drum.detent = seatedDetent(merged.drum.angle);
+      for (const id of SLIDER_IDS) patchDogPhase(id, merged, p.sliders?.[id]?.phi);
       state = merged;
     },
     step(inputs) {

@@ -34,6 +34,25 @@ export interface SliderState {
   blocked: boolean;
 }
 
+/** Which way a slider moves: negative x toward its neg gear, positive toward its pos gear. */
+export type DogSide = 'neg' | 'pos';
+
+/**
+ * A slider inside the simulation. Its phi is derived, not integrated: the angle of its dogs against
+ * the lugs of the gear on `side`, from the shaft angles plus that dog ring's fixed `phase` offset.
+ */
+export interface SimSliderState extends SliderState {
+  side: DogSide; // the gear it is heading for, or last headed for
+  phase: Record<DogSide, number>; // rad, fixed angular offset of the dogs against each gear's lugs
+}
+
+/** Shaft angles, unwrapped, rad, each positive in its own shaft's forward sense of rotation. */
+export interface ShaftAngles {
+  crank: number;
+  input: number;
+  output: number;
+}
+
 export interface SimState {
   t: number;
   engine: { omega: number; running: boolean; torque: number };
@@ -44,9 +63,10 @@ export interface SimState {
   // detent: the detent the drum is seated in (within 3°), null between detents (a false neutral)
   drum: { angle: number; omega: number; detent: DetentName | null };
   pedal: { strokeStartAngle: number }; // drum angle where the current pedal stroke began
-  sliders: Record<SliderId, SliderState>;
+  sliders: Record<SliderId, SimSliderState>;
   lockedGear: GearId | null; // null = neutral or false neutral
   dogTorque: number; // N·m through the locked dog, signed
+  angles: ShaftAngles;
 }
 
 /** Every field optional, recursively; used to patch a SimState. */

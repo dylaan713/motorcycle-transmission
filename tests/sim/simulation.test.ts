@@ -148,3 +148,16 @@ test('the pedal ratchet state carries only the stroke start', () => {
   const s = createSimulation().getState();
   expect(s.pedal).toEqual({ strokeStartAngle: deg(PARAMS.drum.detents.N) });
 });
+test('shaft angles advance with speed and keep the gear ratio', () => {
+  const sim = inGear(3, 6000);
+  const a0 = sim.getState().angles;
+  const s = run(sim, inp({ throttle: 0.3 }), 0.5);
+  expect(s.angles.crank).toBeGreaterThan(a0.crank);
+  expect((s.angles.input - a0.input) / (s.angles.output - a0.output)).toBeCloseTo(gearRatio(3), 6);
+});
+test('reset puts every shaft angle back to zero', () => {
+  const sim = inGear(2, 5000);
+  run(sim, inp({ throttle: 0.2 }), 0.2);
+  sim.reset();
+  expect(sim.getState().angles).toEqual({ crank: 0, input: 0, output: 0 });
+});
