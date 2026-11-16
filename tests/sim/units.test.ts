@@ -12,3 +12,7 @@ test('unit helpers', () => {
 test('every gear pair shares one centre distance', () => {
   for (const [a, b] of Object.values(PARAMS.gears)) expect(a + b).toBe(50);
 });
+test('wrap stays strictly below the period for tiny negative input', () => {
+  expect(wrap(-1e-20, 1)).toBeLessThan(1);
+  expect(wrap(-1e-20, 1)).toBeGreaterThanOrEqual(0);
+});

@@ -8,5 +8,6 @@ export const clamp = (x: number, lo: number, hi: number): number =>
 /** Wrap x into [0, period). */
 export const wrap = (x: number, period: number): number => {
   const r = x % period;
-  return r < 0 ? r + period : r;
+  const w = r < 0 ? r + period : r;
+  return w >= period ? 0 : w; // r + period can round up to exactly period
 };
