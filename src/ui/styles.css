@@ -115,6 +115,103 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   }
 }
 
+/* ---- control deck ---- */
+.deck {
+  --widget-h: 72px; --grip-h: 18px; --btn-w: 96px;
+  display: flex; align-items: stretch; gap: var(--s6); height: 100%;
+  font-size: var(--t-sm);
+  user-select: none; -webkit-user-select: none;
+}
+.deck-cell { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: var(--s1); }
+.deck-caption { display: flex; align-items: baseline; gap: var(--s2); color: var(--third); line-height: 1.2; white-space: nowrap; }
+.deck-key {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--t-xs);
+  color: var(--third); padding: 0 var(--s1); border: 1px solid var(--steel-2); border-radius: 3px;
+}
+.deck-stack { display: flex; flex-direction: column; justify-content: space-between; gap: var(--s1); }
+.deck-shift { display: flex; gap: var(--s2); }
+
+/* sliders share an instrument look: a steel housing that brightens to ink when held */
+[role="slider"] {
+  position: relative; flex: none; height: var(--widget-h); min-width: 44px; min-height: 44px;
+  background: var(--steel-1); border: 1px solid var(--steel-2); border-radius: 6px;
+  touch-action: none; cursor: grab;
+}
+[role="slider"][data-active] { cursor: grabbing; border-color: var(--third); }
+[role="slider"][data-press]:active { transform: none; }
+
+.deck-throttle { width: 44px; overflow: hidden; }
+.deck-throttle-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 100%;
+  background: var(--steel-2); transform-origin: bottom; transform: scaleY(var(--v, 0));
+}
+.deck-throttle-grip {
+  position: absolute; left: 4px; right: 4px; bottom: 2px; height: var(--grip-h);
+  border-radius: 4px; background: var(--steel-3); border: 1px solid var(--ink);
+  background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--steel-2) 3px 4px);
+  transform: translateY(calc(var(--v, 0) * (var(--grip-h) + 6px - var(--widget-h))));
+}
+
+.deck-clutch { width: 128px; overflow: hidden; }
+.deck-clutch-bar {
+  position: absolute; left: 10px; right: 10px; top: 12px; height: 12px;
+  border-radius: 6px; background: var(--steel-3);
+}
+.deck-clutch-lever {
+  position: absolute; left: 12px; right: 14px; top: 28px; height: 8px;
+  border-radius: 4px; background: var(--third);
+  transform-origin: calc(100% - 4px) 50%;
+  transform: translateY(calc((1 - var(--v, 0)) * 6px)) rotate(calc((var(--v, 0) - 1) * 11deg));
+}
+.deck-clutch[data-active] .deck-clutch-lever, .deck-pedal[data-active] .deck-pedal-arm { background: var(--ink); }
+.deck-pivot {
+  position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  border-radius: 50%; background: var(--steel-1); border: 2px solid var(--ink);
+}
+.deck-clutch-lever .deck-pivot { right: -2px; }
+
+.deck-pedal { width: 88px; }
+.deck-pedal-arm {
+  position: absolute; left: 14px; right: 10px; top: 50%; height: 10px; margin-top: -5px;
+  border-radius: 5px; background: var(--third);
+  transform-origin: 6px 50%; transform: rotate(calc(var(--v, 0) * -22deg));
+}
+.deck-pedal-arm .deck-pivot { left: -2px; }
+
+.deck-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: var(--btn-w); min-width: 44px; min-height: 44px; flex: 1 1 0; padding: 2px var(--s2);
+  font: inherit; line-height: 1.1; color: var(--ink);
+  background: var(--steel-1); border: 1px solid var(--steel-2); border-radius: 6px;
+  cursor: pointer; touch-action: none;
+}
+.deck-btn:hover { border-color: var(--steel-3); }
+.deck-btn[data-active] { background: var(--steel-2); border-color: var(--ink); }
+.deck-tap { width: 56px; }
+.deck-ignition .deck-name::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border-radius: 50%; border: 1.5px solid var(--third); vertical-align: 0;
+}
+.deck-ignition[aria-pressed="true"] .deck-name::before { background: var(--ink); border-color: var(--ink); }
+.deck[data-running] .deck-starter .deck-name { color: var(--third); }
+
+@media (max-width: 899.98px) {
+  .deck { --btn-w: 60px; gap: 6px; justify-content: space-between; font-size: var(--t-xs); }
+  .deck-caption { flex-direction: column; align-items: center; gap: 0; }
+  .deck-btn .deck-name { font-size: 0.6875rem; }
+  .deck-ignition .deck-name::before { width: 6px; height: 6px; margin-right: 3px; }
+  .deck-caption .deck-name { font-size: 0.6875rem; }
+  .deck-key { font-size: 0.625rem; padding: 0 2px; }
+  .deck-clutch { width: 64px; }
+  .deck-clutch-bar { left: 6px; right: 6px; }
+  .deck-clutch-lever { left: 6px; right: 8px; }
+  .deck-pedal { width: 52px; }
+  .deck-pedal-arm { left: 10px; right: 6px; }
+  .deck-shift { gap: 6px; }
+  .deck-tap { width: 44px; }
+  .deck-btn { padding: 2px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
