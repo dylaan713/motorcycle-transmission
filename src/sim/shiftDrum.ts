@@ -5,6 +5,9 @@ import type { SliderId } from './types';
 const D = PARAMS.drum;
 const PEDAL_DEADBAND = 0.05;
 const NEUTRAL_CAPTURE = deg(5); // a stroke starting this close to N uses the short stroke
+// A gear detent this close to the stroke start counts as the one the drum is already in.
+const PIN_MARGIN = deg(5);
+const PAWL_OVERSHOOT = deg(2); // a full stroke carries the drum this far past the next gear
 const PAWL_K = D.pawlStiffness / deg(1); // N·m/rad
 // Below this speed a drum under a sub-static load sticks. Without it a drum creeping into a
 // balance under the pawl only decays toward rest and never reaches omega === 0.
@@ -17,6 +20,8 @@ type DetentName = 1 | 2 | 3 | 4 | 5 | 6 | 'N';
 const DETENTS: { name: DetentName; angle: number }[] = (
   [1, 'N', 2, 3, 4, 5, 6] as const
 ).map((name) => ({ name, angle: deg(D.detents[name]) }));
+
+const GEAR_ANGLES: number[] = DETENTS.filter((d) => d.name !== 'N').map((d) => d.angle);
 
 const N_ANGLE = deg(D.detents.N);
 const SECOND_ANGLE = deg(D.detents[2]);
@@ -58,6 +63,18 @@ export const grooveCommand = (slider: SliderId, angle: number): number => {
   return grooveReach(s.pos, angle) - grooveReach(s.neg, angle); // pos - neg avoids -0
 };
 
+/**
+ * Furthest the pawl can carry the drum from `start` in direction `dir`: it picks up the next pin
+ * and the stroke ends just past the next gear detent, so a full stroke from between gears lands
+ * on the adjacent gear and never skips one (or reaches neutral from outside first..second).
+ */
+const strokeLimit = (start: number, dir: number): number => {
+  const next = dir > 0
+    ? GEAR_ANGLES.find((a) => a > start + PIN_MARGIN)
+    : [...GEAR_ANGLES].reverse().find((a) => a < start - PIN_MARGIN);
+  return next === undefined ? Infinity : Math.abs(next - start) + PAWL_OVERSHOOT;
+};
+
 /** Pedal ratchet: torque the pawl puts on the drum and the updated ratchet state. */
 export function pawlTorque(
   pedal: number, drumAngle: number, ratchet: { armed: boolean; strokeStartAngle: number },
@@ -68,7 +85,9 @@ export function pawlTorque(
   const start = ratchet.strokeStartAngle;
   const stroke = Math.abs(start - N_ANGLE) < NEUTRAL_CAPTURE ? D.strokeFromNeutralDeg : D.strokeDeg;
   const dir = Math.sign(pedal);
-  const target = clamp(start + dir * Math.abs(pedal) * deg(stroke), DRUM_MIN, DRUM_MAX);
+  const target = clamp(
+    start + dir * Math.min(Math.abs(pedal) * deg(stroke), strokeLimit(start, dir)), DRUM_MIN, DRUM_MAX,
+  );
   const raw = clamp(PAWL_K * (target - drumAngle), -D.footTorqueMax, D.footTorqueMax);
   const torque = raw * dir > 0 ? raw : 0; // the pawl pushes, never pulls back
   return { torque, ratchet: { armed: false, strokeStartAngle: start } };

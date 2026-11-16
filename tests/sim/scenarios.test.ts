@@ -5,7 +5,7 @@ import { gearRatio } from '../../src/sim/kinematics';
 import { DRUM_MAX, DRUM_MIN } from '../../src/sim/shiftDrum';
 import { createSimulation } from '../../src/sim/simulation';
 import { NEUTRAL_INPUTS, type GearId, type Inputs } from '../../src/sim/types';
-import { createAutopilot, keyframes, pedalStroke, runSource } from '../../src/sim/inputScript';
+import { createAutopilot, keyframes, pedalStroke, runSource, strokeAmount } from '../../src/sim/inputScript';
 import { inGear } from './helpers';
 
 const fresh = () => createSimulation();
@@ -143,4 +143,26 @@ test('invariants hold under 60 s of seeded random inputs', () => {
     expect(Number.isFinite(st.engine.omega + st.inputShaftOmega + st.outputShaftOmega)).toBe(true);
     if (st.lockedGear) expect(st.inputShaftOmega).toBeCloseTo(gearRatio(st.lockedGear) * st.outputShaftOmega, 5);
   });
+});
+test('from a false neutral a full stroke finds the next gear, never neutral or two gears away', () => {
+  // [rest angle, gear above, gear below]
+  const cases: Array<[number, GearId, GearId]> = [[90, 3, 2], [150, 4, 3], [210, 5, 4]];
+  for (const [a, above, below] of cases) {
+    for (const [dir, want] of [[+1, above], [-1, below]] as const) {
+      const sim = inGear(2, 5000);
+      sim.setState({ drum: { angle: deg(a), omega: 0 }, sliders: { B: { x: 0, locked: null } } });
+      const s = runSource(sim, keyframes({ clutchLever: [[0, 1]], pedal: pedalStroke(0.2, dir) }), 1.2);
+      expect(s.lockedGear).toBe(want);
+    }
+  }
+});
+test('autopilot strokes: none when the drum already sits at the target, full toward a gear', () => {
+  // dogs merely blocked near the target detent: wait, do not kick the drum backwards
+  for (const a of [57.5, 59, 60, 61.5, 62.5]) expect(strokeAmount(2, deg(a))).toBe(0);
+  expect(strokeAmount(3, deg(90))).toBe(1);        // the pawl itself ends the stroke at third
+  expect(strokeAmount(2, deg(90))).toBe(-1);
+  expect(strokeAmount(2, deg(30))).toBe(1);        // short stroke from neutral
+  const toN = strokeAmount('N', deg(60));
+  expect(toN).toBeLessThan(-0.4);                   // a half stroke, not a full one
+  expect(toN).toBeGreaterThan(-0.8);
 });

@@ -74,3 +74,16 @@ test('a drum pushed slowly to a halt near the peak sticks there when the pedal l
   expect(end).toBeGreaterThan(89);
   expect(end).toBeLessThan(90);
 });
+test('a full stroke from a false neutral lands on the adjacent gear', () => {
+  // [rest angle, gear above, gear below] in degrees
+  const cases: Array<[number, number, number]> = [[90, 120, 60], [150, 180, 120], [210, 240, 180], [45, 60, 0], [15, 60, 0]];
+  for (const [start, above, below] of cases) {
+    expect(settle(start, stroke(+1))).toBeCloseTo(above, 0);
+    expect(settle(start, stroke(-1))).toBeCloseTo(below, 0);
+  }
+});
+test('a full stroke reaches neutral only from the half-step between first and second', () => {
+  for (let start = 61; start <= 300; start += 1) {
+    for (const dir of [+1, -1]) expect(Math.abs(settle(start, stroke(dir)) - 30)).toBeGreaterThan(5);
+  }
+});

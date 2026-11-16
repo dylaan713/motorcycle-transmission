@@ -85,7 +85,7 @@ const AP = {
   pull: 0.08, // s, clutch pulled before the stroke starts
   strokeTime: 3 * STROKE_RAMP, // s, one pedalStroke
   settle: 0.32, // s after a stroke before it is judged a miss
-  overStroke: 0.15, // extra stroke beyond the target detent, so a stroke lands in its well
+  overStroke: 0.15, // extra stroke beyond neutral, so a stroke lands in its well
   maxTries: 5,
   releaseUp: 0.25, releaseDown: 0.6, // s, clutch fed back out after a shift
   crankTimeout: 3, // s on the starter before resting it
@@ -108,11 +108,18 @@ type Next = 'idle' | 'launch' | 'ride' | 'decel';
 
 const targetAngle = (g: Target): number => deg(PARAMS.drum.detents[g]);
 
-/** Signed stroke that carries the drum from where it is to just past the target detent. */
-function strokeAmount(target: Target, angle: number): number {
+/** Drum this close to the target detent counts as there: its dogs are at most blocked. */
+const STROKE_DEAD_ZONE = deg(3);
+
+/**
+ * Signed stroke toward the target detent. Toward a gear it is a full stroke: the pawl itself ends
+ * a stroke just past the next gear. Toward neutral it is sized to land in neutral's well. Zero when
+ * the drum already sits at the target, so a blocked dog is waited for rather than kicked back.
+ */
+export function strokeAmount(target: Target, angle: number): number {
   const diff = targetAngle(target) - angle;
-  // from neutral the ratchet uses the short stroke, which lands on first or second as it is
-  if (Math.abs(angle - N_ANGLE) < deg(5) && target !== 'N') return Math.sign(diff);
+  if (Math.abs(diff) < STROKE_DEAD_ZONE) return 0;
+  if (target !== 'N') return Math.sign(diff);
   return Math.sign(diff) * Math.min(1, Math.abs(diff) / STROKE + AP.overStroke);
 }
 
