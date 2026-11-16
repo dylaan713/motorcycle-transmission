@@ -7,7 +7,7 @@ import {
 import { engineTorque, nextRunning } from './engine';
 import { clutchCapacity, clutchTorque } from './clutch';
 import { detentTorque, grooveCommand, pawlTorque, stepDrum } from './shiftDrum';
-import { engageSpeeds, stepSlider } from './dogs';
+import { engageSpeeds, stepSlider, targetGear } from './dogs';
 import {
   NEUTRAL_INPUTS, type DeepPartial, type GearId, type Inputs, type SimState, type SliderId,
   type SliderState,
@@ -41,6 +41,10 @@ function integrate(omega: number, inertia: number, drive: number, resist: number
   return Math.abs(free) <= stop ? 0 : free - Math.sign(free) * stop;
 }
 
+/** Net torque on a body: resistance opposes motion, or cancels drive up to its size at rest. */
+const netTorque = (omega: number, drive: number, resist: number): number =>
+  omega !== 0 ? drive - Math.sign(omega) * resist : drive - clamp(drive, -resist, resist);
+
 /** Resistance torque actually applied over a step, as a signed fraction of resist (for dog torque). */
 function resistFraction(
   before: number, after: number, inertia: number, drive: number, resist: number,
@@ -49,10 +53,12 @@ function resistFraction(
   return (drive - (inertia * (after - before)) / DT) / resist;
 }
 
-const finiteOr = (x: unknown, fallback: number): number =>
+/** A number with NaN mapped to 0 (±Infinity kept, for clamping); non-numbers take the fallback. */
+const numberOrFallback = (x: unknown, fallback: number): number =>
   typeof x === 'number' ? (Number.isNaN(x) ? 0 : x) : fallback;
-const unbounded = (x: unknown, fallback: number): number => {
-  const v = finiteOr(x, fallback);
+/** For fields with no range: NaN and ±Infinity both become 0. */
+const finiteOrZero = (x: unknown, fallback: number): number => {
+  const v = numberOrFallback(x, fallback);
   return Number.isFinite(v) ? v : 0;
 };
 const bool = (x: unknown, fallback: boolean): boolean => (typeof x === 'boolean' ? x : fallback);
@@ -62,15 +68,15 @@ export function sanitizeInputs(raw: Partial<Inputs>): Inputs {
   const n = NEUTRAL_INPUTS;
   const r = (raw ?? {}) as Partial<Record<keyof Inputs, unknown>>;
   return {
-    throttle: clamp(finiteOr(r.throttle, n.throttle), 0, 1),
-    clutchLever: clamp(finiteOr(r.clutchLever, n.clutchLever), 0, 1),
-    pedal: clamp(finiteOr(r.pedal, n.pedal), -1, 1),
-    brake: clamp(finiteOr(r.brake, n.brake), 0, 1),
+    throttle: clamp(numberOrFallback(r.throttle, n.throttle), 0, 1),
+    clutchLever: clamp(numberOrFallback(r.clutchLever, n.clutchLever), 0, 1),
+    pedal: clamp(numberOrFallback(r.pedal, n.pedal), -1, 1),
+    brake: clamp(numberOrFallback(r.brake, n.brake), 0, 1),
     ignition: bool(r.ignition, n.ignition),
     starter: bool(r.starter, n.starter),
-    handDrumTorque: unbounded(r.handDrumTorque, n.handDrumTorque),
-    handWheelTorque: unbounded(r.handWheelTorque, n.handWheelTorque),
-    handInputShaftTorque: unbounded(r.handInputShaftTorque, n.handInputShaftTorque),
+    handDrumTorque: finiteOrZero(r.handDrumTorque, n.handDrumTorque),
+    handWheelTorque: finiteOrZero(r.handWheelTorque, n.handWheelTorque),
+    handInputShaftTorque: finiteOrZero(r.handInputShaftTorque, n.handInputShaftTorque),
   };
 }
 
@@ -124,13 +130,15 @@ const lockedGearOf = (sliders: Record<SliderId, SliderState>): GearId | null => 
 const lockedSliderOf = (sliders: Record<SliderId, SliderState>): SliderId | null =>
   SLIDER_IDS.find((id) => sliders[id].locked !== null) ?? null;
 
-/** Slider's shaft speed minus the speed of the free gear it is heading for. */
+/**
+ * Slider's shaft speed minus the speed of the free gear it is heading for. The gear is picked by
+ * dogs.targetGear (same sign rule and dead band) from the groove command, or from x when the
+ * command is near centre; 0 when neither picks one.
+ */
 function relativeOmega(id: SliderId, x: number, command: number, wIn: number, wOut: number): number {
-  const dir = command !== 0 ? command : x;
-  if (dir === 0) return 0;
-  const s = PARAMS.sliders[id];
-  const gear = dir < 0 ? s.neg : s.pos;
-  const shaft = s.shaft === 'input' ? wIn : wOut;
+  const gear = targetGear(id, command) ?? targetGear(id, x);
+  if (gear === null) return 0;
+  const shaft = PARAMS.sliders[id].shaft === 'input' ? wIn : wOut;
   return shaft - freeGearOmega(gear, wIn, wOut);
 }
 
@@ -177,10 +185,8 @@ function stepState(s: SimState, raw: Inputs): SimState {
   const engineDrag = running
     ? 0
     : -engineTorque(Math.max(Math.abs(s.engine.omega), Number.MIN_VALUE), false, 0, false, false);
-  const engineDrive = running
-    ? engineTotal
-    : engineTorque(s.engine.omega, false, 0, u.ignition, u.starter)
-      - engineTorque(s.engine.omega, false, 0, false, false); // starter only
+  const starter = u.starter && u.ignition ? PARAMS.engine.starterTorque : 0;
+  const engineDrive = running ? engineTotal : starter;
   const basketDrive = engineDrive * primaryRatio;
   const basketResist = engineDrag * primaryRatio;
 
@@ -200,11 +206,12 @@ function stepState(s: SimState, raw: Inputs): SimState {
   const wBasket = s.engine.omega / primaryRatio;
   const slip = wBasket - wIn;
   const capacity = clutchCapacity(u.clutchLever);
-  const basketNet = basketDrive - (wBasket !== 0 ? Math.sign(wBasket) * basketResist : 0);
-  const downNet = wIn !== 0
-    ? downDrive - Math.sign(wIn) * downResist
-    : downDrive - clamp(downDrive, -downResist, downResist);
-  const lockTorque = (slip / DT + basketNet / J_ENGINE - downNet / jDown) / (1 / J_ENGINE + 1 / jDown);
+  const basketNet = netTorque(wBasket, basketDrive, basketResist);
+  const downNet = netTorque(wIn, downDrive, downResist);
+  const reducedInertia = 1 / (1 / J_ENGINE + 1 / jDown);
+  // torque that holds the two sides at equal speed, and the one that also cancels the current slip
+  const holdTorque = (basketNet / J_ENGINE - downNet / jDown) * reducedInertia;
+  const lockTorque = holdTorque + (slip / DT) * reducedInertia;
   const c = clutchTorque(slip, lockTorque, capacity);
 
   // 6, 7. Integrate. A locked clutch makes basket and input shaft one body at their common speed.
@@ -213,19 +220,23 @@ function stepState(s: SimState, raw: Inputs): SimState {
   let wD: number;
   let wD0: number; // downstream speed at the start of the smooth part of the step
   let kResist: number; // signed fraction of downstream resistance actually applied
+  let wDSmooth: number; // downstream speed at the end of the smooth part, before any stick impulse
   if (c.locked) {
     const j = J_ENGINE + jDown;
     wD0 = (J_ENGINE * wBasket + jDown * wIn) / j;
     wD = integrate(wD0, j, basketDrive + downDrive, basketResist + downResist);
     wB = wD;
+    wDSmooth = wD;
     kResist = resistFraction(wD0, wD, j, basketDrive + downDrive, basketResist + downResist);
   } else {
     wD0 = wIn;
     wB = integrate(wBasket, J_ENGINE, basketDrive - c.torque, basketResist);
     wD = integrate(wIn, jDown, downDrive + c.torque, downResist);
     kResist = resistFraction(wIn, wD, jDown, downDrive + c.torque, downResist);
-    if (slip !== 0 && Math.sign(wB - wD) !== Math.sign(slip)) {
-      // slip reversed within the step: the plates stick at the momentum-weighted speed
+    wDSmooth = wD;
+    if (slip !== 0 && Math.sign(wB - wD) !== Math.sign(slip) && Math.abs(holdTorque) <= capacity) {
+      // slip reversed within the step and static friction can hold: the plates stick at the
+      // momentum-weighted speed. If it cannot hold, the slip simply carries on the other way.
       wB = wD = (J_ENGINE * wB + jDown * wD) / (J_ENGINE + jDown);
       clutchLocked = true;
     }
@@ -234,10 +245,11 @@ function stepState(s: SimState, raw: Inputs): SimState {
   const outputShaftOmega = gear === null ? integrate(wOut, J_VEH, outDrive, outResist) : wD / ratio;
 
   // 8. Torque through the locked dog: what the output shaft needs beyond its own external torques.
+  // The impulse of plates sticking is left out: it is not a sustained load on the dog.
   let dogTorque = 0;
   const lockedSlider = lockedSliderOf(sliders);
   if (gear !== null && lockedSlider !== null) {
-    const alphaOut = (wD - wD0) / DT / ratio;
+    const alphaOut = (wDSmooth - wD0) / DT / ratio;
     const atOutput = J_VEH * alphaOut - outDrive + kResist * outResist;
     dogTorque = PARAMS.sliders[lockedSlider].shaft === 'output' ? atOutput : atOutput / ratio;
   }
@@ -247,7 +259,7 @@ function stepState(s: SimState, raw: Inputs): SimState {
     engine: { omega: wB * primaryRatio, running, torque: engineTotal },
     clutch: {
       capacity,
-      torque: c.locked ? lockTorque : c.torque,
+      torque: c.torque,
       slip: clutchLocked ? 0 : wB - wD,
       locked: clutchLocked,
     },
@@ -267,6 +279,7 @@ export function createSimulation(): Simulation {
   return {
     getState: () => cloneState(state),
     setState(patch) {
+      if (!isObject(patch)) return; // nothing to merge
       const p = patch as DeepPartial<SimState>;
       const merged = deepMerge(cloneState(state), p);
       // roadSpeed and lockedGear are derived; a patch of roadSpeed alone sets the output shaft
