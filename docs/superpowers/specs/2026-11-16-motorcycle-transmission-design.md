@@ -150,6 +150,28 @@ What is taken from it:
 - **A visible loading state** with progress while geometry is generated.
 - **Camera controls on screen and on keys**, with a reset-view button.
 
+## Owner requirement added during the build (2026-11-16)
+
+The owner's words: "make sure things are explained, even i don't make it i should be able to read
+site and fully understand", and separately "colors are up to your discretion be unique".
+
+What that adds:
+
+- **The site explains itself.** Someone who has never seen a gearbox, and the owner who did not
+  write the code, can read the page and come away able to explain both the mechanism and the
+  simulation behind it.
+- **A "How it works" section on the site** covering, in plain words: what each part does; how a
+  shift happens step by step; what the simulation computes each instant; every simplifying
+  assumption; what is left out; and where each number comes from.
+- **Honest labelling.** The page says it is a simplified model. The numbers are chosen to be
+  representative of a middleweight sport bike and are not measurements of a real gearbox; some
+  values (drum friction and detent strength) were tuned so the modelled behaviour is right. No
+  person who has rebuilt a gearbox has checked it. The site says so where it matters.
+- **A plain-language model document in the repository** (`docs/MODEL.md`) that the owner can read
+  before showing the project: the model, its equations, the assumptions, the tuned values and why,
+  the known limits, and likely questions with answers.
+- **A glossary** of every technical term the page uses.
+
 ## Stages
 
 Each stage ends with something working that is shown to the owner before the next begins.
