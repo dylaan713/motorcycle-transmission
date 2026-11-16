@@ -1,0 +1,52 @@
+# HANDOFF
+
+## State Update (2026-11-16)
+
+- **Done:** Design approved; stage 1 plan written. Nothing built, nothing installed, no git repository yet.
+- **Next:** Overnight build of all six stages, started by the owner.
+
+## Standing authorization for the overnight build (given by the owner 2026-11-16)
+
+The owner's words: "By full freedom I mean I want to wake up to a completed project. The only hard
+rules are that it can not cost any money."
+
+What that covers, as confirmed in conversation:
+
+- All six stages of the design, run straight through without stopping for review between stages.
+- Writing the plans for stages 2 to 6 without the owner reviewing them first.
+- Free npm dev dependencies: `typescript`, `vitest`, `vite`, `three`, `@types/three`. Others are
+  allowed only if free and open source; list every one here with the reason.
+- All visual decisions (palette, illustration style, layout).
+
+What it does not cover (the builder's own limits, stated to the owner):
+
+- Nothing that costs money: no paid tiers, trials needing a card, paid assets or metered APIs.
+- No publishing, hosting or account creation. Stage 6 ends with a production build that is ready
+  to deploy and a draft portfolio entry; the owner deploys.
+- Git is local only: `git init` and commits per passing task, no remote, no push, and never
+  `-c user.name` / `-c user.email`.
+- No changes outside this folder.
+
+## Where things are
+
+- Design: `docs/superpowers/specs/2026-11-16-motorcycle-transmission-design.md`
+- Stage 1 plan: `docs/superpowers/plans/2026-11-16-stage-1-simulation-core.md`
+- Layout reference (structure only, not the look): https://learn-arduino-red.vercel.app/
+
+## How to run it
+
+1. Run the `project-intake` skill on this folder first.
+2. Execute each stage's plan with `superpowers:subagent-driven-development`.
+3. After each stage, write the next stage's plan with `superpowers:writing-plans`, then build it.
+4. If a task fails twice, stop that task, record it under "Problems" below and continue with work
+   that does not depend on it.
+5. Append a State Update here after every stage, and a list of every call made on the owner's
+   behalf under "Decisions made".
+
+## Decisions made
+
+(none yet)
+
+## Problems
+
+(none yet)
