@@ -8,5 +8,7 @@ export interface View {
   resize(width: number, height: number, dpr: number): void;
   pick(x: number, y: number): PartId | null; // CSS pixels relative to the view
   setHighlight(part: PartId | null): void;
+  /** Arrival: 0 draws nothing, 1 everything; parts appear in torque-path order between. */
+  setReveal?(progress: number): void;
   dispose(): void;
 }

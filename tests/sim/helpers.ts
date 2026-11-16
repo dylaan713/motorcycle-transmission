@@ -22,6 +22,7 @@ export const inGear = (g: GearId, engineRpm: number) => {   // locked clutch, st
     sliders: { [id]: { x, phi: 0, locked: g, blocked: false } },
     lockedGear: g,
     engine: { omega: rpm(engineRpm), running: true },
+    clutch: { locked: true },
     inputShaftOmega: wOut * gearRatio(g),
     outputShaftOmega: wOut,
   });

@@ -11,13 +11,19 @@ import { createSimulation } from './sim/simulation';
 import { torquePath } from './model/torquePath';
 import { selection } from './app/selection';
 import { createSchematic } from './view2d/schematic';
+import { formatReading, mountReadouts, type Reading } from './ui/readouts';
+import { mountPanel } from './ui/panel';
+import { mountModeChip, mountStatus } from './ui/status';
 
 applyTokens(document.documentElement);
 
 const sim = createSimulation();
 const controls = createControls();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const driver = createDriver(controls.source, { autoStart: !reducedMotion });
+// the autopilot starts after the arrival, or never by itself under reduced motion
+const driver = createDriver(controls.source, { autoStart: false });
+const ARRIVAL_MS = 900;
+const TEXT_MS = 1000 / 15; // text readouts change at most 15 times a second
 
 const deck = mountDeck(document.getElementById('deck')!, controls, {
   onTouch: () => driver.takeOver(),
@@ -34,7 +40,35 @@ new ResizeObserver(([entry]) => {
   view.resize(entry.contentRect.width, entry.contentRect.height, window.devicePixelRatio || 1);
 }).observe(canvas);
 
+const readouts = mountReadouts(document.querySelector<HTMLElement>('.app-header')!, document.getElementById('live')!);
+const panel = mountPanel(document.getElementById('panel')!);
+const status = mountStatus(document.getElementById('status')!);
+const chip = mountModeChip(document.getElementById('mode')!, driver);
+
+let arrivalStart: number | null = reducedMotion ? null : performance.now();
+if (arrivalStart !== null) view.setReveal?.(0);
+else chip.ready();
+
+let reading: Reading | null = null;
+let lastText = -Infinity;
 const loop = createLoop(sim, () => driver.source(), (state) => {
+  const now = performance.now();
+  if (arrivalStart !== null) {
+    const p = (now - arrivalStart) / ARRIVAL_MS;
+    view.setReveal?.(p);
+    if (p >= 1) {
+      arrivalStart = null;
+      if (driver.mode === 'idle') driver.startDemo(); // unless the visitor already took over
+      chip.ready();
+    }
+  }
+  if (reading === null || now - lastText >= TEXT_MS) {
+    lastText = now;
+    reading = formatReading(state, loop.lastInputs);
+    panel.syncLive(reading);
+    status.sync(reading);
+  }
+  readouts.sync(reading, state);
   deck.sync(state, loop.lastInputs);
   view.render(state, torquePath(state));
 });

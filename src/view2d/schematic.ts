@@ -3,7 +3,7 @@ import {
   CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, drawnAngles, drawnDogPhase, gearAngle,
   gearAxialPosition, gearKind, pitchRadius, sliderOfGear,
 } from '../model/geometry';
-import type { GearNo, PartId } from '../model/parts';
+import { PARTS, type GearNo, type PartId } from '../model/parts';
 import type { TorquePath } from '../model/torquePath';
 import { clutchCapacityMax } from '../sim/clutch';
 import { PARAMS } from '../sim/params';
@@ -308,6 +308,15 @@ function starRadius(a: number): number {
   return r;
 }
 
+// Arrival: parts appear in torque-path order, crank to rear wheel, with the shift mechanism last.
+const SHIFT_PARTS = new Set<PartId>(['forkA', 'forkB', 'forkC', 'shiftDrum', 'starWheel', 'detentArm', 'shiftShaft', 'pedal']);
+const ALL_PARTS = Object.keys(PARTS) as PartId[];
+const REVEAL_ORDER: readonly PartId[] = [
+  ...ALL_PARTS.filter((id) => !SHIFT_PARTS.has(id)), ...ALL_PARTS.filter((id) => SHIFT_PARTS.has(id)),
+];
+/** Share of the arrival over which each part fades in. */
+const REVEAL_FADE = 0.15;
+
 export function createSchematic(canvas: HTMLCanvasElement): View {
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('2D canvas is not available');
@@ -322,6 +331,12 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
   let hatch: CanvasPattern | null = null;
   const hot = new Set<PartId>();
   let hotAlpha = 1;
+  let base = 1; // the opacity of the part being drawn: below 1 only during the arrival
+  let reveal = 1;
+  const revealAlpha = new Map<PartId, number>();
+  const vis = (id: PartId): number => (reveal >= 1 ? 1 : revealAlpha.get(id) ?? 1);
+  /** Sets the opacity for what follows to that of part `id` in the arrival. */
+  const fade = (id: PartId): void => { base = vis(id); ctx!.globalAlpha = base; };
   const flow = new Float64Array(MAX_FLOW * 2);
   let flowN = 0;
   let drumText = '';
@@ -368,13 +383,14 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
   function hotBox(x0: number, y0: number, x1: number, y1: number, hatched = false): void {
     const a = snap(X(x0)), b = snap(Y(y0));
     const w = Math.max(1 / dpr, snap(X(x1)) - a), h = Math.max(1 / dpr, snap(Y(y1)) - b);
-    ctx!.globalAlpha = hotAlpha;
+    ctx!.globalAlpha = hotAlpha * base;
     ctx!.fillStyle = hatched && hatch ? hatch : COLORS.signal;
     ctx!.fillRect(a, b, w, h);
-    ctx!.globalAlpha = 1;
+    ctx!.globalAlpha = base;
   }
   /** A part's box: base fill, torque overlay when it carries torque, outline. */
   function part(id: PartId, x0: number, y0: number, x1: number, y1: number, fill: string, outline: string | null = COLORS.third): void {
+    fade(id);
     box(x0, y0, x1, y1, fill, null);
     if (hot.has(id)) hotBox(x0, y0, x1, y1);
     if (outline) box(x0, y0, x1, y1, null, outline);
@@ -387,7 +403,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
   function ticks(x0: number, x1: number, axisY: number, r: number, angle: number, count: number, colour: string, alpha: number): void {
     const a = snap(X(x0)), b = snap(X(x1));
     if (b - a < 2) return;
-    ctx!.strokeStyle = colour; ctx!.globalAlpha = alpha; ctx!.lineWidth = 1;
+    ctx!.strokeStyle = colour; ctx!.globalAlpha = alpha * base; ctx!.lineWidth = 1;
     ctx!.beginPath();
     const step = TWO_PI / count;
     for (let k = 0; k < count; k++) {
@@ -397,7 +413,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       ctx!.moveTo(a + 1, y); ctx!.lineTo(b - 1, y);
     }
     ctx!.stroke();
-    ctx!.globalAlpha = 1;
+    ctx!.globalAlpha = base;
   }
   const tickColour = (id: PartId): string => (hot.has(id) ? COLORS.ground : COLORS.third);
 
@@ -448,19 +464,21 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     ctx!.closePath();
   }
   function drawForkRod(id: PartId, pin: number, body: number, topY: number): void {
+    fade(id);
     quad(pin, CURSOR_Y, body, topY, FORK_W / 2);
     ctx!.fillStyle = COLORS.steel3; ctx!.fill();
     ctx!.strokeStyle = COLORS.third; ctx!.lineWidth = 1; ctx!.stroke();
-    if (hot.has(id)) { ctx!.globalAlpha = hotAlpha; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = 1; }
+    if (hot.has(id)) { ctx!.globalAlpha = hotAlpha * base; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = base; }
   }
 
   function circle(x: number, y: number, r: number): void {
     ctx!.beginPath(); ctx!.arc(X(x), Y(y), Math.max(0.5, L(r)), 0, TWO_PI);
   }
   function fillCircle(id: PartId | null, x: number, y: number, r: number, fill: string, outline: string | null = COLORS.third): void {
+    if (id) fade(id);
     circle(x, y, r);
     ctx!.fillStyle = fill; ctx!.fill();
-    if (id && hot.has(id)) { ctx!.globalAlpha = hotAlpha; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = 1; }
+    if (id && hot.has(id)) { ctx!.globalAlpha = hotAlpha * base; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = base; }
     if (outline) { ctx!.strokeStyle = outline; ctx!.lineWidth = 1; ctx!.stroke(); }
   }
   /** Radial ticks round an end-view circle, turning at `angle`. */
@@ -531,6 +549,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
 
   function drawStar(state: SimState): void {
     const cur = state.drum.angle;
+    fade('starWheel');
     ctx!.beginPath();
     const n = 120;
     for (let i = 0; i <= n; i++) {
@@ -541,11 +560,12 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     }
     ctx!.closePath();
     ctx!.fillStyle = COLORS.steel2; ctx!.fill();
-    if (hot.has('starWheel')) { ctx!.globalAlpha = hotAlpha; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = 1; }
+    if (hot.has('starWheel')) { ctx!.globalAlpha = hotAlpha * base; ctx!.fillStyle = COLORS.signal; ctx!.fill(); ctx!.globalAlpha = base; }
     ctx!.strokeStyle = COLORS.third; ctx!.lineWidth = 1; ctx!.stroke();
     fillCircle(null, STAR.x, STAR.y, 3 * MM, COLORS.steel3);
     // the detent arm's roller rides the profile where it faces the cursor
     const rx = STAR.x + starRadius(cur) + ROLLER_R;
+    fade('detentArm');
     ctx!.strokeStyle = COLORS.steel3; ctx!.lineWidth = Math.max(2, L(2.4 * MM));
     ctx!.beginPath(); ctx!.moveTo(X(ARM_PIVOT.x), Y(ARM_PIVOT.y)); ctx!.lineTo(X(rx), Y(STAR.y)); ctx!.stroke();
     fillCircle('detentArm', ARM_PIVOT.x, ARM_PIVOT.y, 1.8 * MM, COLORS.steel2);
@@ -585,6 +605,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     for (let i = 0; i < PLATE_COUNT; i++) {
       const s = shapes[I_PLATE0 + i];
       const friction = i % 2 === 0;
+      fade(s.id);
       box(s.x, s.y, s.x + s.w, s.y + s.h, friction ? COLORS.steel1 : COLORS.steel3, null);
       if (hot.has(s.id)) hotBox(s.x, s.y, s.x + s.w, s.y + s.h, slipping);
       if (L(s.w) >= 5) box(s.x, s.y, s.x + s.w, s.y + s.h, null, COLORS.third);
@@ -600,6 +621,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
   }
 
   function drawCase(): void {
+    fade('inputShaft');
     for (const [x0, x1] of WALLS) {
       for (const [ya, yb] of WALL_PIECES) box(x0, ya, x1, yb, COLORS.steel1, null);
       for (const shaft of ['input', 'output'] as const) {
@@ -630,6 +652,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
 
     const { front, rear, wheel } = INSET;
     // ground under the wheel
+    fade('rearWheel');
     const gy = line1(Y(rear.y + wheel.r));
     ctx!.strokeStyle = COLORS.third; ctx!.lineWidth = 1;
     ctx!.beginPath(); ctx!.moveTo(X(rear.x - wheel.r - 6 * MM), gy); ctx!.lineTo(X(rear.x + wheel.r + 4 * MM), gy); ctx!.stroke();
@@ -659,7 +682,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     const chainW = Math.max(2, L(2.4 * MM));
     chainPath();
     ctx!.strokeStyle = chainFill; ctx!.lineWidth = chainW; ctx!.stroke();
-    if (hot.has('chain')) { ctx!.globalAlpha = hotAlpha; ctx!.strokeStyle = COLORS.signal; ctx!.stroke(); ctx!.globalAlpha = 1; }
+    if (hot.has('chain')) { ctx!.globalAlpha = hotAlpha * base; ctx!.strokeStyle = COLORS.signal; ctx!.stroke(); ctx!.globalAlpha = base; }
     // links travel with the sprocket's rim: offset grows as the drawn angle falls (forward drive)
     const linkPx = Math.max(3, L(CHAIN_PITCH * (front.r / SPROCKET_R)));
     LINKS[0] = linkPx * 0.35; LINKS[1] = linkPx * 0.65;
@@ -807,6 +830,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       for (const g of GEAR_ORDER) { drawGear(state, 'input', g); drawGear(state, 'output', g); }
       // the web that makes third and fourth one sliding piece
       const g3 = shapes[gearIndex('input', 3)], g4 = shapes[gearIndex('input', 4)];
+      fade('gear3in');
       box(g3.x + g3.w, -C_HUB_R, g4.x, C_HUB_R, COLORS.steel2, COLORS.third);
       for (const s of SLIDERS) drawDogs(state, s);
       // forks for the output-shaft sliders, and fork C's yoke, in front of the gears
@@ -823,8 +847,10 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       drawFinalDrive(ang.output, ang.wheel);
       drawStar(state);
       buildFlow(state, path);
+      base = Math.min(1, reveal); ctx.globalAlpha = base;
       drawFlow(path);
       drawLabels(state);
+      base = 1; ctx.globalAlpha = 1;
       drawHighlight();
     },
     resize(width, height, ratio) {
@@ -850,6 +876,16 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       return null;
     },
     setHighlight(id) { highlight = id; },
+    setReveal(progress) {
+      reveal = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 1;
+      // part i starts at i/(n-1) of (1 - REVEAL_FADE): none starts before its i/n share of the
+      // arrival is past, and the last is fully drawn at 1
+      const n = REVEAL_ORDER.length;
+      REVEAL_ORDER.forEach((id, i) => {
+        const start = (i / (n - 1)) * (1 - REVEAL_FADE);
+        revealAlpha.set(id, Math.min(1, Math.max(0, (reveal - start) / REVEAL_FADE)));
+      });
+    },
     dispose() {
       hatch = null;
       ctx.setTransform(1, 0, 0, 1, 0, 0);

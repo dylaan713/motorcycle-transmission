@@ -1,21 +1,12 @@
 import type { Controls } from '../app/controls';
 import type { Inputs, SimState } from '../sim/types';
+import { el } from './dom';
 
 type Analog = 'throttle' | 'clutchLever' | 'pedal';
 type Hooks = { onTouch(): void; onReset(): void };
 
 const KEYBOARD_PULSE_MS = 150; // a button activated by Space holds its channel this long
 const STARTER_PULSE_MS = 800; // cranking needs longer than a tap
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K, cls: string, attrs: Record<string, string> = {}, ...children: Array<Node | string>
-): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.className = cls;
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  e.append(...children);
-  return e;
-}
 
 const kbd = (hint: string): HTMLElement => el('kbd', 'deck-key', { 'aria-hidden': 'true' }, hint);
 

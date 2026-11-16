@@ -19,6 +19,9 @@ describe('tokens', () => {
       for (const bg of [COLORS.ground, COLORS.surface]) expect(contrast(text, bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(COLORS.ground, COLORS.signal)).toBeGreaterThanOrEqual(4.5);
   });
+  test('ink on the steel fills under buttons and the current table row passes 4.5', () => {
+    for (const bg of [COLORS.steel1, COLORS.steel2]) expect(contrast(COLORS.ink, bg)).toBeGreaterThanOrEqual(4.5);
+  });
   test('ink on signal is banned for text', () => {
     expect(contrast(COLORS.ink, COLORS.signal)).toBeLessThan(4.5);
   });
