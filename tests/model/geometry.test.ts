@@ -1,9 +1,12 @@
-import { test, expect } from 'vitest';
+import { describe, test, expect } from 'vitest';
+import { PARAMS } from '../../src/sim/params';
+import { dogAligned } from '../../src/sim/dogs';
+import type { SimState, SliderId } from '../../src/sim/types';
 import { gearRatio } from '../../src/sim/kinematics';
 import { createSimulation } from '../../src/sim/simulation';
-import { deg } from '../../src/sim/units';
+import { deg, wrap } from '../../src/sim/units';
 import {
-  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, dogPhase, gearAngle,
+  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, dogPhase, drawnDogPhase, gearAngle,
   gearAxialPosition, gearKind, pitchRadius, sliderOfGear,
 } from '../../src/model/geometry';
 import { inGear, inp, run } from '../sim/helpers';
@@ -89,4 +92,60 @@ test('patching phi sets the derived phase on both sides at that instant', () => 
   expect(dogPhase('C', 'pos', s)).toBeCloseTo(deg(40), 12);
   sim.setState({ sliders: { C: { phi: 0 } } });
   expect(sim.getState().sliders.C.phi).toBe(0); // exactly aligned, not a hair short of a pitch
+});
+
+describe('the dog phase in the drawn frame', () => {
+  const W = deg(PARAMS.dogs.windowDeg);
+  const SLIDER_GEAR = { A: ['output', 5], B: ['output', 6], C: ['input', 3] } as const;
+  /** The drawn alignment window: [0, W) for an input-shaft slider, its mirror (-W, 0] for an output one. */
+  const inDrawnWindow = (slider: SliderId, d: number): boolean =>
+    PARAMS.sliders[slider].shaft === 'input' ? d < W : d === 0 || d > PITCH - W;
+
+  test('the drawn relative angle lies in the drawn window exactly when the simulation aligns the dogs', () => {
+    let aligned = 0, total = 0;
+    for (const slider of ['A', 'B', 'C'] as const) {
+      const s = PARAMS.sliders[slider];
+      const [shaft, g] = SLIDER_GEAR[slider];
+      const sense = shaft === 'input' ? 1 : -1;
+      for (let i = 0; i < 60; i++) {
+        const sim = createSimulation();
+        sim.setState({ angles: { input: 0.37 * i - 4, output: -0.23 * i + 1.1, crank: 0 } });
+        sim.setState({ sliders: { [slider]: { phi: deg((i * 7.3) % 72), x: i % 2 ? 0.6 : -0.6 } } });
+        const st = sim.getState();
+        const side = st.sliders[slider].side;
+        const freeShaft = shaft === 'input' ? 'input' : 'output';
+        const independent = wrap(
+          gearAngle(shaft, g, st.angles) + sense * st.sliders[slider].phase[side]
+            - gearAngle(freeShaft, s[side], st.angles),
+          PITCH,
+        );
+        expect(phaseGap(drawnDogPhase(slider, side, st), independent)).toBeLessThan(1e-9);
+        expect(inDrawnWindow(slider, drawnDogPhase(slider, side, st))).toBe(dogAligned(st.sliders[slider].phi));
+        total++; if (dogAligned(st.sliders[slider].phi)) aligned++;
+      }
+    }
+    expect(aligned).toBeGreaterThan(0); // the sweep covers both cases
+    expect(aligned).toBeLessThan(total);
+  });
+
+  test('output-shaft sliders draw at minus the dog phase, input-shaft sliders at plus', () => {
+    const s = run(inGear(3, 6000), inp({ throttle: 0.3 }), 0.2);
+    expect(phaseGap(drawnDogPhase('A', 'pos', s), -dogPhase('A', 'pos', s))).toBeLessThan(1e-9);
+    expect(phaseGap(drawnDogPhase('C', 'neg', s), dogPhase('C', 'neg', s))).toBeLessThan(1e-9);
+  });
+
+  test('a locked free gear keeps a constant drawn offset from its shaft', () => {
+    for (const [g, shaft, ref] of [
+      [1, 'output', (a: SimState['angles']) => -a.output],
+      [5, 'input', (a: SimState['angles']) => a.input],
+    ] as const) {
+      const sim = inGear(g, 7000);
+      const a0 = sim.getState().angles;
+      const off0 = gearAngle(shaft, g, a0) - ref(a0);
+      const s = run(sim, inp({ throttle: 0.5 }), 0.5);
+      expect(s.lockedGear).toBe(g);
+      expect(Math.abs(s.angles.output)).toBeGreaterThan(5);
+      expect(gearAngle(shaft, g, s.angles) - ref(s.angles)).toBeCloseTo(off0, 6);
+    }
+  });
 });

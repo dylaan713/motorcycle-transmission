@@ -1,6 +1,7 @@
 import { PARAMS } from '../sim/params';
 import { gearAngle as simGearAngle } from '../sim/kinematics';
 import { dogPhase as simDogPhase } from '../sim/dogs';
+import { wrap } from '../sim/units';
 import type { SimState, SliderId } from '../sim/types';
 import type { GearNo } from './parts';
 
@@ -47,10 +48,24 @@ export const gearAxialPosition = (g: GearNo): number =>
 export const gearAngle = (shaft: Shaft, g: GearNo, angles: SimState['angles']): number =>
   simGearAngle(shaft, g, angles);
 
+const DOG_PITCH = (2 * Math.PI) / PARAMS.dogs.count;
+
 /**
  * Angle of a slider's dogs against the lugs and slots of the gear on that side, rad, wrapped to
  * one dog pitch (2π/5), measured in the slider's own shaft's forward sense. The simulation tests
- * alignment on this same angle.
+ * alignment on this same angle (aligned in [0, windowDeg)). A renderer does not use this: it
+ * uses drawnDogPhase, which is in the frame gearAngle draws in.
  */
 export const dogPhase = (slider: SliderId, side: 'neg' | 'pos', state: SimState): number =>
   simDogPhase(slider, side, state.angles, state.sliders[slider].phase[side]);
+
+/**
+ * The same relative angle in the drawn frame, the one a renderer uses: drawn slider dogs minus
+ * drawn gear lugs, wrapped to one dog pitch. It is +dogPhase for the input-shaft slider and
+ * -dogPhase for the output-shaft sliders, whose shaft draws at -angles.output. So the simulation's
+ * window [0, windowDeg) is [0, windowDeg) here for slider C and its mirror (-windowDeg, 0] for A
+ * and B: the dogs are aligned where the drawn slider lug, measured from the end of a gear lug in
+ * its own shaft's drawn sense of rotation, has room to drop into the gap.
+ */
+export const drawnDogPhase = (slider: SliderId, side: 'neg' | 'pos', state: SimState): number =>
+  wrap((PARAMS.sliders[slider].shaft === 'input' ? 1 : -1) * dogPhase(slider, side, state), DOG_PITCH);
