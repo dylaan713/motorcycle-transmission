@@ -33,9 +33,12 @@ function button(cls: string, name: string, hint: string, shortcut: string, label
 /** A held button: down on press, up on release; Space or Enter activation gives a timed pulse. */
 function holdable(b: HTMLElement, down: () => void, up: () => void, pulseMs: number): void {
   let pressed = false;
+  let pulse = 0; // pending timed release from a keyboard activation
+  const cancelPulse = (): void => { window.clearTimeout(pulse); pulse = 0; };
   const release = (): void => { if (pressed) { pressed = false; up(); } };
   b.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    cancelPulse(); // an earlier pulse must not cut this press short
     b.setPointerCapture(e.pointerId);
     pressed = true;
     down();
@@ -45,8 +48,9 @@ function holdable(b: HTMLElement, down: () => void, up: () => void, pulseMs: num
   b.addEventListener('lostpointercapture', release);
   b.addEventListener('click', (e) => {
     if (e.detail !== 0) return; // a pointer click was already handled by pointerdown/up
+    cancelPulse();
     down();
-    window.setTimeout(up, pulseMs);
+    pulse = window.setTimeout(() => { pulse = 0; if (!pressed) up(); }, pulseMs);
   });
 }
 
@@ -54,18 +58,47 @@ interface Slider {
   root: HTMLElement;
   dragging: boolean;
   shown: number;
+  pct: number | null; // the ARIA value last written
 }
+
+const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 /**
  * A custom slider: pointer capture on drag, the value sent to `controls.setPointer`, released on
  * pointer up so the control ramps back to rest. `compute` maps the pointer to a value given
- * where the drag started.
+ * where the drag started. While focused, its arrow keys drive its own channel through the held
+ * key path (`arrowKeys` maps an arrow to a KEYMAP code) and never reach the page-wide keymap;
+ * an arrow with no mapping does nothing.
  */
 function slider(
-  root: HTMLElement, channel: Analog, controls: Controls,
+  root: HTMLElement, channel: Analog, controls: Controls, onTouch: () => void,
+  arrowKeys: Record<string, string>,
   compute: (e: PointerEvent, start: { x: number; y: number; v: number; rect: DOMRect }) => number,
 ): Slider {
-  const s: Slider = { root, dragging: false, shown: Number.NaN };
+  const s: Slider = { root, dragging: false, shown: Number.NaN, pct: null };
+  const pressed = new Set<string>(); // KEYMAP codes this slider is holding down
+  const mods = (e: KeyboardEvent): boolean => e.metaKey || e.ctrlKey || e.altKey;
+  root.addEventListener('keydown', (e) => {
+    if (!ARROWS.has(e.code) || mods(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const code = arrowKeys[e.code];
+    if (e.repeat || code === undefined) return;
+    onTouch();
+    pressed.add(code);
+    controls.setKey(code, true);
+  });
+  root.addEventListener('keyup', (e) => {
+    if (!ARROWS.has(e.code)) return;
+    e.stopPropagation();
+    const code = arrowKeys[e.code];
+    if (code === undefined || !pressed.delete(code)) return;
+    controls.setKey(code, false);
+  });
+  root.addEventListener('blur', () => {
+    for (const code of pressed) controls.setKey(code, false);
+    pressed.clear();
+  });
   let start = { x: 0, y: 0, v: 0, rect: new DOMRect() };
   root.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -96,15 +129,17 @@ function show(s: Slider, v: number, text: (pct: number) => string): void {
   s.shown = v;
   s.root.style.setProperty('--v', v.toFixed(3));
   const pct = Math.round(v * 100);
-  if (s.root.getAttribute('aria-valuenow') !== String(pct)) {
+  if (pct !== s.pct) {
+    s.pct = pct;
     s.root.setAttribute('aria-valuenow', String(pct));
     s.root.setAttribute('aria-valuetext', text(pct));
   }
 }
 
+// no data-press: a drag surface must not scale under the pointer; its own movement is the feedback
 const sliderAttrs = (label: string, shortcut: string, min: number, orientation: string): Record<string, string> => ({
-  role: 'slider', tabindex: '0', 'data-press': '', 'aria-label': label, 'aria-keyshortcuts': shortcut,
-  'aria-valuemin': String(min), 'aria-valuemax': '100', 'aria-valuenow': '0', 'aria-orientation': orientation,
+  role: 'slider', tabindex: '0', 'aria-label': label, 'aria-keyshortcuts': shortcut,
+  'aria-valuemin': String(min), 'aria-valuemax': '100', 'aria-orientation': orientation,
 });
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
@@ -123,20 +158,23 @@ export function mountDeck(
   // throttle: a vertical track with a grip; the grip's position is absolute in the track
   const throttleEl = el('div', 'deck-throttle', sliderAttrs('Throttle', 'ArrowUp', 0, 'vertical'),
     el('div', 'deck-throttle-fill'), el('div', 'deck-throttle-grip'));
-  const throttle = slider(throttleEl, 'throttle', controls,
+  const throttle = slider(throttleEl, 'throttle', controls, () => hooks.onTouch(),
+    { ArrowUp: 'ArrowUp', ArrowRight: 'ArrowUp' },
     (e, s) => clamp01((s.rect.bottom - e.clientY) / s.rect.height));
 
   // clutch: a lever swinging about its perch toward a fixed grip; drag right or up to pull
-  const clutchEl = el('div', 'deck-clutch', sliderAttrs('Clutch lever', 'C Shift', 0, 'horizontal'),
+  const clutchEl = el('div', 'deck-clutch', sliderAttrs('Clutch lever', 'C', 0, 'horizontal'),
     el('div', 'deck-clutch-bar'),
     el('div', 'deck-clutch-lever', {}, el('div', 'deck-pivot')));
-  const clutch = slider(clutchEl, 'clutchLever', controls,
+  const clutch = slider(clutchEl, 'clutchLever', controls, () => hooks.onTouch(),
+    { ArrowRight: 'KeyC', ArrowUp: 'KeyC' },
     (e, s) => clamp01(s.v + ((e.clientX - s.x) - (e.clientY - s.y)) / (s.rect.width * 0.75)));
 
   // shift pedal: rocks about a pivot; drag up from centre for up, down for down
   const pedalEl = el('div', 'deck-pedal', sliderAttrs('Shift pedal', 'W S', -100, 'vertical'),
     el('div', 'deck-pedal-arm', {}, el('div', 'deck-pivot')));
-  const pedal = slider(pedalEl, 'pedal', controls,
+  const pedal = slider(pedalEl, 'pedal', controls, () => hooks.onTouch(),
+    { ArrowUp: 'KeyW', ArrowDown: 'KeyS' },
     (e, s) => Math.min(1, Math.max(-1, s.v - (e.clientY - s.y) / (s.rect.height / 2))));
 
   const up = button('deck-tap', 'Up', 'W', 'W', 'Shift up');
@@ -162,8 +200,9 @@ export function mountDeck(
     el('div', 'deck-shift', { role: 'group', 'aria-label': 'Gear shift' },
       cell('deck-cell-pedal', pedalEl, caption('Shift', 'W/S')),
       el('div', 'deck-stack', {}, up, down)),
-    el('div', 'deck-stack', {}, brake, reset),
-    el('div', 'deck-stack', {}, ignition, starter));
+    el('div', 'deck-stack', {}, brake),
+    el('div', 'deck-stack', {}, ignition, starter),
+    el('div', 'deck-stack deck-stack-reset', {}, reset));
 
   // any interaction hands control to the visitor; capture runs it before the widget's own handler
   root.addEventListener('pointerdown', () => hooks.onTouch(), true);
@@ -176,6 +215,8 @@ export function mountDeck(
     [clutch, 'clutchLever', (p) => (p === 0 ? 'released' : `${p} percent pulled`)],
     [pedal, 'pedal', (p) => (p === 0 ? 'at rest' : p > 0 ? `${p} percent up` : `${-p} percent down`)],
   ];
+
+  for (const [s, , text] of sliders) show(s, 0, text); // initial ARIA value and text
 
   return {
     sync(state, inputs) {

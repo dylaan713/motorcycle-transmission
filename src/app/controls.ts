@@ -10,7 +10,6 @@ export const KEYMAP: Record<string, Action> = {
   ArrowUp: 'throttle',
   ArrowDown: 'brake',
   KeyC: 'clutchLever',
-  ShiftLeft: 'clutchLever',
   KeyW: 'pedalUp',
   KeyS: 'pedalDown',
   Enter: 'starter',
@@ -24,6 +23,7 @@ export interface Controls {
   setStarter(down: boolean): void;
   toggleIgnition(): void;
   releaseAll(): void; // every key, pointer and starter let go, e.g. when the window loses focus
+  seed(inputs: Inputs): void; // take over from these inputs; each channel then ramps from there
   update(dtSeconds: number): void; // advances the ramps
   inputs(): Inputs;
   readonly source: InputSource; // calls update with the step's dt, then inputs()
@@ -120,6 +120,13 @@ export function createControls(): Controls {
       starterKey = false;
       starterButton = false;
       for (const ch of Object.keys(pointer) as Analog[]) pointer[ch] = null;
+    },
+    seed(from) {
+      for (const ch of Object.keys(value) as Analog[]) {
+        const [lo, hi] = RANGE[ch];
+        value[ch] = clamp(Number.isFinite(from[ch]) ? from[ch] : 0, lo, hi);
+      }
+      ignition = from.ignition;
     },
     update,
     inputs,

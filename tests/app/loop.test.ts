@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { createLoop } from '../../src/app/loop';
 import { createSimulation } from '../../src/sim/simulation';
 import { NEUTRAL_INPUTS } from '../../src/sim/types';
+import { PARAMS } from '../../src/sim/params';
 
 test('real time maps to fixed steps with the remainder carried', () => {
   const sim = createSimulation(); const loop = createLoop(sim, () => () => NEUTRAL_INPUTS, () => {});
@@ -17,4 +18,11 @@ test('a long gap is capped, slow motion scales, pause holds, stepOnce steps', ()
   loop.stepOnce(); expect(sim.getState().t).toBeCloseTo(0.1055, 9);
   expect(frames).toBe(3);
   loop.setTimeScale(5); expect(loop.timeScale).toBe(1);
+});
+test('lastInputs is what the most recent step was given', () => {
+  const sim = createSimulation();
+  const loop = createLoop(sim, () => (t) => ({ ...NEUTRAL_INPUTS, throttle: t }), () => {});
+  expect(loop.lastInputs).toEqual(NEUTRAL_INPUTS);
+  loop.tick(0.0163); // 32 steps; the last was given loop time 31 × dt
+  expect(loop.lastInputs.throttle).toBeCloseTo(31 * PARAMS.dt, 12);
 });

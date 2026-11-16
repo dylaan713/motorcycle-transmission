@@ -138,7 +138,6 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   touch-action: none; cursor: grab;
 }
 [role="slider"][data-active] { cursor: grabbing; border-color: var(--third); }
-[role="slider"][data-press]:active { transform: none; }
 
 .deck-throttle { width: 44px; overflow: hidden; }
 .deck-throttle-fill {
@@ -194,21 +193,27 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 }
 .deck-ignition[aria-pressed="true"] .deck-name::before { background: var(--ink); border-color: var(--ink); }
 .deck[data-running] .deck-starter .deck-name { color: var(--third); }
+/* held buttons sit on steel-2, where --third falls below 4.5:1 */
+.deck .deck-btn[data-active] .deck-name, .deck .deck-btn[data-active] .deck-key { color: var(--ink); }
+.deck .deck-btn[data-active] .deck-key { border-color: var(--third); }
+.deck-stack-reset { margin-left: var(--s6); }
+.deck-stack-reset .deck-btn { flex: 0 0 auto; height: 44px; margin-top: auto; }
 
 @media (max-width: 899.98px) {
-  .deck { --btn-w: 60px; gap: 6px; justify-content: space-between; font-size: var(--t-xs); }
+  .deck { --btn-w: 54px; gap: 4px; justify-content: space-between; font-size: var(--t-xs); }
   .deck-caption { flex-direction: column; align-items: center; gap: 0; }
   .deck-btn .deck-name { font-size: 0.6875rem; }
   .deck-ignition .deck-name::before { width: 6px; height: 6px; margin-right: 3px; }
   .deck-caption .deck-name { font-size: 0.6875rem; }
   .deck-key { font-size: 0.625rem; padding: 0 2px; }
-  .deck-clutch { width: 64px; }
+  .deck-clutch { width: 54px; }
   .deck-clutch-bar { left: 6px; right: 6px; }
   .deck-clutch-lever { left: 6px; right: 8px; }
-  .deck-pedal { width: 52px; }
+  .deck-pedal { width: 48px; }
   .deck-pedal-arm { left: 10px; right: 6px; }
-  .deck-shift { gap: 6px; }
-  .deck-tap { width: 44px; }
+  .deck-shift { gap: 4px; }
+  .deck-tap, .deck-brake, .deck-reset { width: 44px; }
+  .deck-stack-reset { margin-left: 0; }
   .deck-btn { padding: 2px; }
 }
 
