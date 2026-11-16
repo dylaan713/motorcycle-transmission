@@ -67,3 +67,10 @@ test('stiction holds a resting drum inside the static band', () => {
 test('a resting drum outside the static band returns to its detent', () => {
   expect(Math.abs(settle(85, () => 0) - 60)).toBeLessThan(0.5);
 });
+test('a drum pushed slowly to a halt near the peak sticks there when the pedal lets go', () => {
+  // the pawl creeps the drum to a balance just short of 90°; its speed only decays toward zero
+  const end = settle(60, stroke(+0.48));
+  expect(Math.abs(detentTorque(deg(end)))).toBeLessThan(PARAMS.drum.staticFriction);
+  expect(end).toBeGreaterThan(89);
+  expect(end).toBeLessThan(90);
+});

@@ -28,8 +28,8 @@ export const PARAMS = {
     // detent angles in degrees
     detents: { 1: 0, N: 30, 2: 60, 3: 120, 4: 180, 5: 240, 6: 300 },
     inertia: 2e-4, friction: 0.05, damping: 0.5, // kg·m², N·m (sliding), N·m·s/rad; tunable
-    staticFriction: 0.25, // N·m, holds a drum at rest; tunable
-    detentPeak: 2.5, neutralDetentPeak: 0.8, // N·m, tunable
+    staticFriction: 0.3, // N·m, holds a drum at rest; tunable
+    detentPeak: 3.3, neutralDetentPeak: 1.65, // N·m, tunable
     grooveFullDeg: 8, grooveZeroDeg: 22,
     strokeDeg: 62, strokeFromNeutralDeg: 32,
     pawlStiffness: 3, footTorqueMax: 8, // N·m/deg and N·m at the drum, tunable

@@ -6,6 +6,9 @@ const D = PARAMS.drum;
 const PEDAL_DEADBAND = 0.05;
 const NEUTRAL_CAPTURE = deg(5); // a stroke starting this close to N uses the short stroke
 const PAWL_K = D.pawlStiffness / deg(1); // N·m/rad
+// Below this speed a drum under a sub-static load sticks. Without it a drum creeping into a
+// balance under the pawl only decays toward rest and never reaches omega === 0.
+const STICK_OMEGA = 0.01; // rad/s
 
 export const DRUM_MIN: number = deg(0);
 export const DRUM_MAX: number = deg(300);
@@ -73,14 +76,15 @@ export function pawlTorque(
 
 /**
  * One timestep of drum motion. Damping is integrated implicitly (its time constant is
- * shorter than dt). A drum at rest stays at rest while |appliedTorque| <= staticFriction;
- * once moving, sliding friction is applied as a bounded impulse and the drum comes to rest
- * (omega exactly 0) only when its velocity would reverse within the step or it hits a stop.
+ * shorter than dt). A drum at rest, or slower than STICK_OMEGA, sticks while
+ * |appliedTorque| <= staticFriction; otherwise sliding friction is applied as a bounded
+ * impulse and the drum comes to rest (omega exactly 0) when its velocity would reverse within
+ * the step or it hits a stop.
  */
 export function stepDrum(
   drum: { angle: number; omega: number }, appliedTorque: number, dt: number,
 ): { angle: number; omega: number } {
-  if (drum.omega === 0 && Math.abs(appliedTorque) <= D.staticFriction) {
+  if (Math.abs(drum.omega) < STICK_OMEGA && Math.abs(appliedTorque) <= D.staticFriction) {
     return { angle: drum.angle, omega: 0 };
   }
   const denom = 1 + (dt * D.damping) / D.inertia;
