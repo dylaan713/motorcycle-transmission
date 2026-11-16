@@ -73,11 +73,16 @@ export function pawlTorque(
 
 /**
  * One timestep of drum motion. Damping is integrated implicitly (its time constant is
- * shorter than dt); Coulomb friction is applied as a bounded impulse so it can hold the drum.
+ * shorter than dt). A drum at rest stays at rest while |appliedTorque| <= staticFriction;
+ * once moving, sliding friction is applied as a bounded impulse and the drum comes to rest
+ * (omega exactly 0) only when its velocity would reverse within the step or it hits a stop.
  */
 export function stepDrum(
   drum: { angle: number; omega: number }, appliedTorque: number, dt: number,
 ): { angle: number; omega: number } {
+  if (drum.omega === 0 && Math.abs(appliedTorque) <= D.staticFriction) {
+    return { angle: drum.angle, omega: 0 };
+  }
   const denom = 1 + (dt * D.damping) / D.inertia;
   const free = (drum.omega + (dt * appliedTorque) / D.inertia) / denom;
   const frictionDv = (dt * D.friction) / D.inertia / denom;

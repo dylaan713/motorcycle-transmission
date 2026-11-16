@@ -60,3 +60,10 @@ test('holding the pedal gives one shift, not several', () => {
 test('the drum can rest between detents', () => {
   expect(toDeg(stepDrum({ angle: deg(90), omega: 0 }, detentTorque(deg(90)), PARAMS.dt).angle)).toBeCloseTo(90, 6);
 });
+test('stiction holds a resting drum inside the static band', () => {
+  expect(Math.abs(detentTorque(deg(89.2)))).toBeLessThan(PARAMS.drum.staticFriction);
+  expect(settle(89.2, () => 0)).toBeCloseTo(89.2, 6);
+});
+test('a resting drum outside the static band returns to its detent', () => {
+  expect(Math.abs(settle(85, () => 0) - 60)).toBeLessThan(0.5);
+});
