@@ -45,8 +45,32 @@ What it does not cover (the builder's own limits, stated to the owner):
 
 ## Decisions made
 
-(none yet)
+Stage 1 (simulation core):
+- Gearbox numbers are mine: six pairs that each sum to 50 teeth (13:37, 17:33, 19:31, 21:29, 23:27,
+  24:26), primary 36:76, final 16:45, 0.31 m wheel, 270 kg, 15,000 rpm limiter. All in
+  `src/sim/params.ts`.
+- Work is on `main` in a new local repository; no branches, no remote.
+- Added to the model beyond the plan, because the physics needed them: drum viscous damping, drum
+  stiction separate from sliding friction, a fork "block" that makes the drum go solid when a dog
+  cannot move (this is what stops two gears engaging and makes a loaded gearbox refuse a shift).
+- Tuned values: drum sliding friction 0.25 -> 0.05 N·m, static friction 0.3, gear detent peak
+  2.5 -> 3.3 N·m, neutral detent peak 0.8 -> 1.65 N·m, idle throttle authority 0.15 -> 0.4.
+- One builder's `git commit` was refused by its own permission check. I re-ran the tests and type
+  check and committed that work myself under the standing authorization above (commit aa0e9bf).
+- Per-task reviews ran alongside the next task's build when the two touched different files, to
+  save wall-clock time.
+
+Stage 2 (2D panel and controls):
+- Visual identity is mine: graphite ground, steel greys, and one orange that means only "this part
+  is carrying torque". Palette, type and layout are in the stage 2 plan's "Design plan".
+- Free dependencies added beyond the five named: `@fontsource-variable/archivo` and
+  `@fontsource-variable/jetbrains-mono` (open-licensed fonts, bundled locally so the page makes no
+  network call).
+- Browser checks are done with the browser tool and screenshots, not an added test framework.
+- No project-scoped skills were installed (see `.claude/CAPABILITY.md`); five candidates are listed
+  there for you to approve or not.
 
 ## Problems
 
-(none yet)
+- Stage 1 final review found that a full pedal stroke out of a false neutral skipped a gear (and
+  could reach neutral from between 2nd and 3rd). Fix in progress; see the State Updates below.
