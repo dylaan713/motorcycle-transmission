@@ -716,7 +716,7 @@ test('turning the drum by hand with the engine off selects a gear', () => {
 });
 test('a weak stroke can leave the box between gears', () => {
   const outcomes = [];
-  for (let amount = 0.3; amount <= 1.0001; amount += 0.05) {
+  for (let amount = 0.3; amount <= 1.0001; amount += 0.01) {
     const s = runSource(inGear(2, 5000), keyframes({ clutchLever: [[0, 1]], pedal: pedalStroke(0.2, amount) }), 1.2);
     outcomes.push(s.lockedGear);
   }
