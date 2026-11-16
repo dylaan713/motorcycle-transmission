@@ -131,7 +131,7 @@ export const PARAMS = {
   drum: {
     // detent angles in degrees
     detents: { 1: 0, N: 30, 2: 60, 3: 120, 4: 180, 5: 240, 6: 300 },
-    inertia: 2e-4, friction: 0.25,                 // tunable
+    inertia: 2e-4, friction: 0.25, damping: 0.5,   // kg·m², N·m, N·m·s/rad; tunable
     detentPeak: 2.5, neutralDetentPeak: 0.8,       // N·m, tunable
     grooveFullDeg: 8, grooveZeroDeg: 22,
     strokeDeg: 62, strokeFromNeutralDeg: 32,
@@ -352,7 +352,7 @@ Rules:
 - **Detent:** zero torque at every detent angle and at the peak between neighbours. Between gear detents 60° apart it is `−detentPeak × sin(2π(θ − θd)/60°)`. Between 0° and 60° there are three wells (1st, N, 2nd) 30° apart; the half-wells that belong to N use `neutralDetentPeak` and period 30°, the half-wells belonging to 1st and 2nd use `detentPeak` and period 30°.
 - **Groove:** a slider is commanded fully toward a gear within `grooveFullDeg` of that gear's detent, zero beyond `grooveZeroDeg`, linear between. Sign is negative for the slider's `neg` gear and positive for its `pos` gear.
 - **Pawl:** while `|pedal| < 0.05` the ratchet is armed and records the current drum angle as `strokeStartAngle`; the torque is 0. Once `|pedal| ≥ 0.05` it disarms and stays disarmed until the pedal returns under 0.05. While disarmed the target angle is `strokeStartAngle + sign(pedal) × |pedal| × stroke`, where stroke is `strokeFromNeutralDeg` if the stroke started within 5° of the N detent, else `strokeDeg`; the target is clamped to the drum stops. Torque is `pawlStiffness × (target − angle)`, capped at `footTorqueMax`, and only ever in the direction of the stroke (the pawl pushes, never pulls back).
-- **stepDrum:** Coulomb friction of `friction` N·m opposes motion and holds the drum still when the applied torque is below it. Angle is limited to [0°, 300°] with velocity zeroed at a stop. The implementer may sub-step internally for stability.
+- **stepDrum:** viscous `damping` opposes velocity; its time constant (inertia / damping) is shorter than `dt`, so integrate the damping term implicitly. Coulomb friction of `friction` N·m opposes motion and holds the drum still when the applied torque is below it. Angle is limited to [0°, 300°] with velocity zeroed at a stop. The implementer may sub-step internally for stability.
 
 - [ ] **Step 1: Write the failing test:**
 
