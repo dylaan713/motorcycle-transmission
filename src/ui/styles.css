@@ -1,0 +1,120 @@
+/* Colour values mirror COLORS in tokens.ts (a unit test keeps them equal); this
+   block exists only to avoid a flash of unstyled colour before JS runs. */
+:root {
+  --ground: #14161A;
+  --surface: #1E2228;
+  --ink: #E8EAED;
+  --third: #8F99A8;
+  --signal: #FF6A1A;
+  --steel-1: #2A3038;
+  --steel-2: #3A424D;
+  --steel-3: #566170;
+
+  /* spacing scale, 4px base */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s12: 48px;
+  /* type scale */
+  --t-xs: 0.75rem; --t-sm: 0.8125rem; --t-md: 0.9375rem; --t-lg: 1.125rem; --t-xl: 1.5rem; --t-2xl: 2rem;
+  --font-text: 'Archivo Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --header-h: 56px;
+  --deck-h: 132px;
+  --panel-w: 360px;
+  --gutter: 24px;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--ground); }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-text);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.15; }
+h1 { font-size: var(--t-lg); font-stretch: 112%; }
+h2 { font-size: var(--t-lg); font-stretch: 112%; }
+@media (min-width: 900px) {
+  h1, h2 { letter-spacing: -0.02em; }
+}
+
+.mono, [data-count] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+[data-press] { transition: transform 80ms; touch-action: manipulation; }
+[data-press]:active { transform: scale(0.97); }
+
+/* ---- layout, desktop first ---- */
+.app { display: grid; grid-template-rows: var(--header-h) 1fr; height: 100dvh; }
+
+.app-header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+  padding: 0 var(--gutter);
+  background: var(--surface);
+  border-bottom: 1px solid var(--steel-1);
+}
+.app-header h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-slots { display: flex; align-items: center; gap: var(--s6); font-size: var(--t-sm); }
+#live { color: var(--ink); }
+#mode { color: var(--third); }
+
+.app-main {
+  display: grid; min-height: 0;
+  grid-template-columns: 1fr var(--panel-w);
+  grid-template-rows: 1fr var(--deck-h);
+  grid-template-areas: 'stage panel' 'deck panel';
+}
+#stage { grid-area: stage; min-width: 0; min-height: 0; position: relative; padding: var(--gutter); }
+#deck {
+  grid-area: deck; min-width: 0;
+  padding: var(--s4) var(--gutter);
+  background: var(--surface);
+  border-top: 1px solid var(--steel-1);
+}
+#panel {
+  grid-area: panel; min-height: 0; overflow-y: auto;
+  padding: var(--gutter);
+  background: var(--surface);
+  border-left: 1px solid var(--steel-1);
+}
+
+.noscript-note { max-width: 40rem; padding: var(--gutter); }
+.app-main > noscript { grid-area: stage; }
+.noscript-note table { border-collapse: collapse; margin-top: var(--s4); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.noscript-note th, .noscript-note td { padding: var(--s1) var(--s4) var(--s1) 0; text-align: left; font-weight: 400; }
+.noscript-note th { color: var(--third); }
+
+/* ---- below 900px: one column ---- */
+@media (max-width: 899.98px) {
+  :root { --gutter: 16px; }
+  .app { height: auto; min-height: 100dvh; }
+  .app-header { position: sticky; top: 0; z-index: 2; }
+  .app-header h1 { font-size: var(--t-md); }
+  .header-slots { gap: var(--s3); }
+  .app-main { display: flex; flex-direction: column; height: calc(100dvh - var(--header-h)); }
+  #stage { flex: 0 0 46dvh; padding: var(--gutter); }
+  #panel {
+    flex: 1 1 auto; border-left: 0; border-top: 1px solid var(--steel-1);
+    padding-bottom: calc(var(--deck-h) + var(--gutter));
+  }
+  #deck {
+    position: fixed; left: 0; right: 0; bottom: 0; height: var(--deck-h); z-index: 3;
+    padding: var(--s3) var(--gutter);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
