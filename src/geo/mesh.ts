@@ -73,6 +73,20 @@ export function prism(outline: Vector2[], holes: Vector2[][], x0: number, x1: nu
 }
 
 /**
+ * A flat cap at x over a simple polygon in the y-z plane, facing +x or -x. It uses only the
+ * polygon's own points, so it closes a surface whose rim is exactly that ring.
+ */
+export function polygonCap(ring: Vector2[], x: number, facesPlusX: boolean): Solid {
+  const out: Solid = [];
+  for (const f of ShapeUtils.triangulateShape(ring.slice(), [])) {
+    let [a, b, c] = f.map((i) => ring[i]);
+    if ((signedArea([a, b, c]) > 0) !== facesPlusX) [b, c] = [c, b];
+    out.push(x, a.x, a.y, x, b.x, b.y, x, c.x, c.y);
+  }
+  return out;
+}
+
+/**
  * Revolve a closed profile of (x, r) points about the x axis in `segments` steps, the first at
  * angle a0. Points on the axis (r = 0) close the solid there.
  */
@@ -105,7 +119,7 @@ export function tube(path: Vector3[], radius: number, sides: number): Solid {
     const n = ref.clone().cross(t).normalize();
     const b = t.clone().cross(n);
     return Array.from({ length: sides }, (_, k) => {
-      const a = (2 * Math.PI * k) / sides;
+      const a = Math.PI / 2 + (2 * Math.PI * k) / sides; // with an even count, vertices sit at ±b
       return p.clone().addScaledVector(n, radius * Math.cos(a)).addScaledVector(b, radius * Math.sin(a));
     });
   });
