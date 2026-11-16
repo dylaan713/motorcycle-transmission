@@ -7,6 +7,8 @@ export const COLORS = {
   steel1: '#2A3038',
   steel2: '#3A424D',
   steel3: '#566170',
+  steel4: '#7C8796',
+  steel5: '#A9B4C2',
 } as const;
 
 function channel(v: number): number {

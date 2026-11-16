@@ -6,13 +6,14 @@ const css = readFileSync(new URL('../../src/ui/styles.css', import.meta.url), 'u
 
 const NAMES: Record<string, string> = {
   ground: '--ground', surface: '--surface', ink: '--ink', third: '--third', signal: '--signal',
-  steel1: '--steel-1', steel2: '--steel-2', steel3: '--steel-3',
+  steel1: '--steel-1', steel2: '--steel-2', steel3: '--steel-3', steel4: '--steel-4', steel5: '--steel-5',
 };
 
 describe('tokens', () => {
   test('palette matches the design plan', () => {
     expect(COLORS).toMatchObject({ ground: '#14161A', surface: '#1E2228', ink: '#E8EAED', third: '#8F99A8', signal: '#FF6A1A' });
     expect(COLORS).toMatchObject({ steel1: '#2A3038', steel2: '#3A424D', steel3: '#566170' });
+    expect(COLORS).toMatchObject({ steel4: '#7C8796', steel5: '#A9B4C2' });
   });
   test('every text pair passes 4.5', () => {
     for (const text of [COLORS.ink, COLORS.third, COLORS.signal])
