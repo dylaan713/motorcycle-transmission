@@ -72,23 +72,29 @@ const AP = {
   downshiftRpm: 5000,
   stopRpm: 3000, // in first, below this the clutch is pulled and the bike braked to a stop
   antiStallRpm: 1800, // in gear below this the clutch is pulled whatever the phase
-  launchSeconds: 1.5,
-  launchThrottle: 0.35,
-  launchRpm: 3500, // the lever is held back in proportion to how far the revs sag below this
-  launchGain: 0.4, // lever travel per 1000 rpm of sag
+  launchSeconds: 1.6, // lever fed from leverOpen to fully out over this
+  launchThrottle: 0.5, // base throttle for the launch
+  launchRpm: 3500, // the launch holds the revs here: throttle opens and the lever holds back on a sag
+  launchThrottleGain: 1.0, // throttle per 1000 rpm of sag below launchRpm
+  launchGain: 1.0, // lever travel per 1000 rpm of sag
   rideThrottle: 0.8,
   sixthSeconds: 3, // time held in sixth before closing the throttle
   decelBrake: 0.35,
-  blipBand: 1500, // rpm short of the lower gear's speed at which the downshift blip is full
+  blipBand: 1500, // rpm short of the new gear's speed at which the blip is full throttle
+  matchBand: 300, // rpm: the clutch goes back out once the engine is this close to the new gear's speed
+  matchWait: 0.3, // s after the dog is in before the clutch goes back out regardless
   idleSeconds: 2, // pause in neutral before the next lap
   leverOpen: PARAMS.clutch.leverFullRelease + 0.05, // just past where the clutch carries nothing
-  pull: 0.08, // s, clutch pulled before the stroke starts
+  pull: 0.08, // s, clutch pulled before a downshift stroke starts (an upshift stroke is preloaded)
   strokeTime: 3 * STROKE_RAMP, // s, one pedalStroke
   settle: 0.32, // s after a stroke before it is judged a miss
   overStroke: 0.15, // extra stroke beyond neutral, so a stroke lands in its well
   maxTries: 5,
-  releaseUp: 0.25, releaseDown: 0.6, // s, clutch fed back out after a shift
+  releaseUp: 0.1, releaseDown: 0.5, // s, clutch fed back out after a shift
   crankTimeout: 3, // s on the starter before resting it
+  // Rate limits (full travel per second) so no control ever teleports: about 80 ms of lever travel,
+  // 120 ms of throttle and of brake.
+  leverRate: 1 / 0.08, throttleRate: 1 / 0.12, brakeRate: 1 / 0.12,
 } as const;
 
 const STROKE = deg(PARAMS.drum.strokeDeg);
@@ -102,8 +108,14 @@ type Phase =
   | { kind: 'ride'; t0: number }
   | { kind: 'decel'; t0: number }
   | { kind: 'stop'; t0: number }
-  | { kind: 'shift'; t0: number; target: Target; tries: number; amount: number; then: Next }
-  | { kind: 'release'; t0: number; seconds: number; throttle: number; then: 'ride' | 'decel' };
+  | {
+    kind: 'shift'; t0: number; target: Target; tries: number; amount: number; then: Next;
+    inAt: number | null; // script time the target was reached
+  }
+  | {
+    kind: 'release'; t0: number; seconds: number; throttle: number; then: 'ride' | 'decel';
+    strokeT0: number; amount: number; // the pedal stroke may still be returning
+  };
 type Next = 'idle' | 'launch' | 'ride' | 'decel';
 
 const targetAngle = (g: Target): number => deg(PARAMS.drum.detents[g]);
@@ -129,11 +141,13 @@ const reached = (target: Target, s: SimState): boolean =>
     : s.lockedGear === target;
 
 /**
- * The rider shown until the visitor touches a control: starts the engine, launches in first,
- * upshifts with the clutch at about 9000 rpm to sixth, closes the throttle and downshifts with
- * the clutch below about 5000 rpm, brakes to a stop in first, selects neutral and repeats.
- * Every decision is read from the state; a missed shift is retried with a stroke sized from
- * where the drum actually is, and every wait has a timeout.
+ * The rider shown until the visitor touches a control: starts the engine, launches in first holding
+ * about 3500 rpm, upshifts at about 9000 rpm with a throttle roll-off, a short clutch dip and a
+ * preloaded pedal, letting the clutch out once the revs are near the new gear's speed; then closes
+ * the throttle and downshifts below about 5000 rpm with the clutch and a rev-matching blip, brakes
+ * to a stop in first, selects neutral and repeats. Every decision is read from the state; a missed
+ * shift is retried with a stroke sized from where the drum actually is, and every wait has a
+ * timeout. Lever, throttle and brake move at bounded rates, so no control ever jumps.
  */
 export function createAutopilot(): InputSource {
   let phase: Phase = { kind: 'start', t0: 0 };
@@ -142,7 +156,7 @@ export function createAutopilot(): InputSource {
   const enter = (kind: 'idle' | 'launch' | 'ride' | 'decel' | 'stop', t: number): Phase =>
     ({ kind, t0: t });
   const shiftTo = (target: Target, then: Next, t: number, s: SimState): Phase =>
-    ({ kind: 'shift', t0: t, target, tries: 0, amount: strokeAmount(target, s.drum.angle), then });
+    ({ kind: 'shift', t0: t, target, tries: 0, amount: strokeAmount(target, s.drum.angle), then, inAt: null });
 
   const decide = (t: number, s: SimState): Inputs => {
     // reused by a new runSource, script time restarts: begin again from what the state shows
@@ -178,11 +192,14 @@ export function createAutopilot(): InputSource {
       }
       case 'launch': {
         if (s.lockedGear !== 1) { phase = shiftTo(1, 'launch', t, s); return { ...base, clutchLever: 1 }; }
-        // feed the clutch out on a ramp, holding it back in proportion as the revs sag
+        // feed the clutch out on a ramp; hold the revs up with the throttle, and hold the lever back
+        // in proportion as they still sag
+        const sag = (AP.launchRpm - r) / 1000;
         const ramp = AP.leverOpen * (1 - Math.min(1, dt / AP.launchSeconds));
-        const lever = clamp(ramp + (AP.launchGain * (AP.launchRpm - r)) / 1000, 0, AP.leverOpen);
+        const lever = clamp(ramp + AP.launchGain * sag, 0, AP.leverOpen);
+        const throttle = clamp(AP.launchThrottle + AP.launchThrottleGain * sag, 0, 1);
         if (ramp === 0 && s.clutch.locked) phase = enter('ride', t);
-        return { ...base, throttle: AP.launchThrottle, clutchLever: lever };
+        return { ...base, throttle, clutchLever: lever };
       }
       case 'ride': {
         const g = s.lockedGear;
@@ -227,18 +244,30 @@ export function createAutopilot(): InputSource {
       }
       case 'shift': {
         const brake = p.then === 'decel' ? AP.decelBrake : p.then === 'ride' ? 0 : 1;
-        // on a downshift, blip toward the speed the engine will turn in the lower gear
-        const blip = p.then === 'decel' && p.target !== 'N'
-          ? clamp((matchRpm(p.target, s) - r) / AP.blipBand, 0, 1) : 0;
-        const hold: Inputs = { ...base, clutchLever: 1, brake, throttle: blip };
-        if (dt < AP.pull) return hold;
-        const ds = dt - AP.pull;
-        if (ds < AP.strokeTime) return { ...hold, pedal: sample(pedalStroke(0, p.amount), ds) as number };
-        if (reached(p.target, s) && s.drum.omega === 0) { phase = afterShift(p, t); return hold; }
+        const gearShift = p.target !== 'N' && (p.then === 'ride' || p.then === 'decel');
+        const match = p.target !== 'N' ? matchRpm(p.target, s) : r;
+        // roll off, and blip whenever the revs are short of the speed of the new gear: on an upshift
+        // that catches an undershoot, on a downshift it is the rev-match
+        const throttle = gearShift ? clamp((match - r) / AP.blipBand, 0, 1) : 0;
+        const hold: Inputs = { ...base, clutchLever: 1, brake, throttle };
+        // an upshift stroke is preloaded as the clutch dips; a downshift waits for the clutch
+        const pull = p.then === 'ride' ? 0 : AP.pull;
+        if (dt < pull) return hold;
+        const ds = dt - pull;
+        const pedal = ds < AP.strokeTime ? sample(pedalStroke(0, p.amount), ds) as number : 0;
+        if (reached(p.target, s)) {
+          if (p.inAt === null) p.inAt = t;
+          const matched = Math.abs(r - match) < AP.matchBand || t - p.inAt >= AP.matchWait;
+          const done = gearShift ? matched : ds >= AP.strokeTime && s.drum.omega === 0;
+          if (done) { phase = afterShift(p, t, t - ds); return { ...hold, pedal }; }
+        }
+        if (ds < AP.strokeTime) return { ...hold, pedal };
         if (ds >= AP.strokeTime + AP.settle) {
-          if (reached(p.target, s) || p.tries + 1 >= AP.maxTries) { phase = afterShift(p, t); return hold; }
+          if (reached(p.target, s) || p.tries + 1 >= AP.maxTries) { phase = afterShift(p, t, t - ds); return hold; }
           // missed: try again with a stroke sized from where the drum stopped
-          phase = { ...p, t0: t - AP.pull, tries: p.tries + 1, amount: strokeAmount(p.target, s.drum.angle) };
+          phase = {
+            ...p, t0: t - pull, tries: p.tries + 1, amount: strokeAmount(p.target, s.drum.angle), inAt: null,
+          };
         }
         return hold;
       }
@@ -246,18 +275,46 @@ export function createAutopilot(): InputSource {
         const k = Math.min(1, dt / p.seconds);
         if (k >= 1) phase = enter(p.then, t);
         const brake = p.then === 'decel' ? AP.decelBrake : 0;
-        return antiStall({ ...base, throttle: p.throttle, brake, clutchLever: AP.leverOpen * (1 - k) }, s, r);
+        // after a downshift keep blipping toward the gear's speed while the clutch feeds in
+        const g = s.lockedGear;
+        const throttle = p.then === 'decel' && g !== null
+          ? clamp((matchRpm(g, s) - r) / AP.blipBand, 0, 1) : p.throttle;
+        const ds = t - p.strokeT0;
+        const pedal = ds < AP.strokeTime ? sample(pedalStroke(0, p.amount), ds) as number : 0;
+        return antiStall({
+          ...base, throttle, brake, pedal, clutchLever: AP.leverOpen * (1 - k),
+        }, s, r);
       }
     }
   };
 
-  const afterShift = (p: Extract<Phase, { kind: 'shift' }>, t: number): Phase => {
-    if (p.then === 'ride') return { kind: 'release', t0: t, seconds: AP.releaseUp, throttle: AP.rideThrottle, then: 'ride' };
-    if (p.then === 'decel') return { kind: 'release', t0: t, seconds: AP.releaseDown, throttle: 0, then: 'decel' };
+  const afterShift = (p: Extract<Phase, { kind: 'shift' }>, t: number, strokeT0: number): Phase => {
+    const stroke = { strokeT0, amount: p.amount };
+    if (p.then === 'ride') {
+      return { kind: 'release', t0: t, seconds: AP.releaseUp, throttle: AP.rideThrottle, then: 'ride', ...stroke };
+    }
+    if (p.then === 'decel') {
+      return { kind: 'release', t0: t, seconds: AP.releaseDown, throttle: 0, then: 'decel', ...stroke };
+    }
     return enter(p.then, t);
   };
 
-  return (t, s) => decide(t, s);
+  // Every analog control moves at a bounded rate from what was last sent.
+  let sent: Inputs | null = null;
+  return (t, s) => {
+    const step = sent === null || t < lastT ? 0 : t - lastT; // script time restarts on reuse
+    const want = decide(t, s);
+    if (sent === null) { sent = want; return { ...want }; }
+    const toward = (from: number, to: number, rate: number): number =>
+      from + clamp(to - from, -rate * step, rate * step);
+    sent = {
+      ...want,
+      clutchLever: toward(sent.clutchLever, want.clutchLever, AP.leverRate),
+      throttle: toward(sent.throttle, want.throttle, AP.throttleRate),
+      brake: toward(sent.brake, want.brake, AP.brakeRate),
+    };
+    return { ...sent };
+  };
 }
 
 /** Engine speed that matches the road speed in gear g. */

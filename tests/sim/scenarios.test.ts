@@ -179,3 +179,49 @@ test('a forced clutchless downshift from sixth to first is resisted above the li
   expect(s.lockedGear).not.toBe(6);              // the strokes did force lower gears in
   expect(maxRpm).toBeLessThan(17000);
 });
+test('autopilot moves every analog control smoothly', () => {
+  const ap = createAutopilot();
+  const channels = ['throttle', 'clutchLever', 'brake', 'handDrumTorque', 'handWheelTorque', 'handInputShaftTorque'] as const;
+  let prev: Inputs | null = null;
+  let worst = 0;
+  runSource(fresh(), (t, st) => {
+    const u = ap(t, st);
+    if (prev) for (const k of channels) worst = Math.max(worst, Math.abs(u[k] - prev[k]));
+    prev = u;
+    return u;
+  }, 60);
+  expect(worst).toBeLessThanOrEqual(0.02);
+});
+test('autopilot rides like a competent rider: quick launch, upshifts that land on the next gear', () => {
+  const sim = fresh();
+  let launchSlip = 0;
+  let launchLow = Infinity; // lowest engine speed while the launch slips
+  let upshifts = 0;
+  let gear: GearId | null = null;
+  let shifting: GearId | null = null; // new gear after an upshift, until the clutch locks again
+  let bitten = false;
+  let worstMismatch = 0;
+  runSource(sim, createAutopilot(), 40, (st) => {
+    const g = st.lockedGear;
+    if (g !== null && gear !== null && g === gear + 1) { shifting = g; bitten = false; upshifts++; }
+    if (g !== null) gear = g;
+    if (upshifts === 0 && g === 1 && !st.clutch.locked && st.clutch.capacity > 0) {
+      launchSlip += PARAMS.dt;
+      launchLow = Math.min(launchLow, toRpm(st.engine.omega));
+    }
+    if (shifting !== null && g === shifting) {
+      if (st.clutch.capacity > 0) bitten = true;
+      if (st.clutch.locked) shifting = null;
+      else if (bitten) {
+        // engine speed against the speed it turns at once the clutch is home in the new gear
+        const matched = toRpm(st.inputShaftOmega * PARAMS.primary.driven / PARAMS.primary.drive);
+        worstMismatch = Math.max(worstMismatch, Math.abs(toRpm(st.engine.omega) - matched));
+      }
+    }
+  });
+  expect(upshifts).toBeGreaterThanOrEqual(5);
+  expect(launchSlip).toBeGreaterThan(0.3);
+  expect(launchSlip).toBeLessThan(2);
+  expect(launchLow).toBeGreaterThan(2800);       // the launch holds its revs rather than bogging
+  expect(worstMismatch).toBeLessThan(600);
+});
