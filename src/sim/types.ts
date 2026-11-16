@@ -45,3 +45,6 @@ export interface SimState {
   lockedGear: GearId | null; // null = neutral or false neutral
   dogTorque: number; // N·m through the locked dog, signed
 }
+
+/** Every field optional, recursively; used to patch a SimState. */
+export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
