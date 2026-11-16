@@ -5,6 +5,7 @@ import { createSimulation } from '../../src/sim/simulation';
 import type { SimState } from '../../src/sim/types';
 import { DOG_WIDTHS, dogLugAngles, schematicShapes } from '../../src/view2d/schematic';
 import { PARAMS } from '../../src/sim/params';
+import { clutchCapacityMax } from '../../src/sim/clutch';
 import { dogAligned } from '../../src/sim/dogs';
 import { deg, wrap } from '../../src/sim/units';
 
@@ -57,4 +58,29 @@ test('a slider dog is drawn wholly inside a gap between the gear lugs exactly wh
   }
   expect(fits).toBeGreaterThan(0);
   expect(fits).toBeLessThan(total);
+});
+
+test('released plates stay on their carriers: friction plates in the basket, steel plates on the hub drum', () => {
+  for (const capacity of [clutchCapacityMax, clutchCapacityMax / 2, 0]) {
+    const st = base(); st.clutch.capacity = capacity;
+    const shapes = schematicShapes(st);
+    const span = (id: PartId) => {
+      const own = shapes.filter((s) => s.id === id);
+      return [Math.min(...own.map((s) => s.x)), Math.max(...own.map((s) => s.x + s.w))];
+    };
+    const [basket0, basket1] = span('clutchBasket');
+    const [hub0, hub1] = span('clutchHub');
+    for (const s of shapes.filter((p) => p.id === 'frictionPlates')) {
+      expect(s.x).toBeGreaterThanOrEqual(basket0);
+      expect(s.x + s.w).toBeLessThanOrEqual(basket1);
+    }
+    for (const s of shapes.filter((p) => p.id === 'steelPlates')) {
+      expect(s.x).toBeGreaterThanOrEqual(hub0);
+      expect(s.x + s.w).toBeLessThanOrEqual(hub1);
+    }
+    // the pressure plate's release rod still reaches into the input shaft
+    const [, pp1] = span('pressurePlate');
+    const [in0] = span('inputShaft');
+    expect(pp1).toBeGreaterThan(in0);
+  }
 });

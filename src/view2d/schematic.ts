@@ -26,7 +26,7 @@ const OUT_Y = CENTRE_DISTANCE;
 type Shaft = 'input' | 'output';
 const SHAFT_R: Record<Shaft, number> = { input: 11 * MM, output: 12.5 * MM };
 const AXIS_Y: Record<Shaft, number> = { input: IN_Y, output: OUT_Y };
-const IN_SHAFT_X = [-128 * MM, 66 * MM] as const;
+const IN_SHAFT_X = [-131 * MM, 66 * MM] as const;
 const OUT_SHAFT_X = [-66 * MM, 84 * MM] as const;
 const WALLS = [[-66 * MM, -62 * MM], [62 * MM, 66 * MM]] as const; // gearbox case, either side of the gears
 const WALL_Y = [-40 * MM, 112 * MM] as const;
@@ -43,7 +43,8 @@ const PRIMARY_X = [-82 * MM, -70 * MM] as const;
 const BASKET_R = 74 * MM;
 const BASKET_RIM = 2.5 * MM;
 const BASKET_BACK_X = [-87 * MM, PRIMARY_X[0]] as const;
-const BASKET_MOUTH_X = -134 * MM;
+// Long enough that the outermost friction plate stays in the basket at full release (16 gaps open).
+const BASKET_MOUTH_X = -144 * MM;
 const HUB_X = [-93 * MM, -88 * MM] as const;
 const HUB_R = 66 * MM;
 const FRICTION = { t: 3 * MM, r: 70 * MM };
@@ -53,8 +54,13 @@ const STEEL_INNER_R = 44 * MM; // the steel plates' inner teeth ride the hub dru
 const FRICTION_COUNT = PARAMS.clutch.surfaces / 2; // each friction plate has two faces
 const PLATE_COUNT = 2 * FRICTION_COUNT - 1; // friction, steel, ..., friction
 const GAP_MAX = 0.6 * MM; // per interface, fully released
-const HUB_DRUM_LEN = 40 * MM;
-const SPRING = { r: 32 * MM, h: 5 * MM, len: 7 * MM };
+// The hub drum carries the steel plates; long enough for the outermost one at full release.
+const HUB_DRUM_LEN = 47 * MM;
+// Clutch springs: each on a post from the hub drum, between a bolt head fixed to the post and the
+// pressure plate, so they shorten as the lever pulls the plate outboard.
+const SPRING = { r: 32 * MM, h: 5 * MM, post: 1.5 * MM, boltX: -153 * MM, head: 2 * MM };
+// Release rod: through the hollow input shaft to the lifter at the pressure plate's centre.
+const RELEASE_ROD = { r: 3.5 * MM, endX: -118 * MM };
 
 // Crank stub beside the primary drive gear: journal, two webs with the crankpin between, journal.
 const CRANK = {
@@ -117,7 +123,7 @@ const DETENT_LABELS: readonly string[] = DETENT_NAMES.map(String);
 
 const GEAR_LABEL_Y = -36 * MM;
 /** The whole drawing including labels, metres. */
-const EXTENT = { x0: -158 * MM, x1: 182 * MM, y0: -140 * MM, y1: 204 * MM };
+const EXTENT = { x0: -164 * MM, x1: 182 * MM, y0: -140 * MM, y1: 204 * MM };
 
 // ---------------------------------------------------------------------------------------------
 // Sliders and their dogs.
@@ -174,9 +180,11 @@ const I_CRANK = slot('crank');
 const I_PRIMARY = slot('primaryDrive');
 const I_BASKET = slot('clutchBasket');
 const I_HUB = slot('clutchHub');
+const I_HUB_DRUM = slot('clutchHub');
 const I_PLATE0 = IDS.length;
 for (let i = 0; i < PLATE_COUNT; i++) slot(i % 2 === 0 ? 'frictionPlates' : 'steelPlates');
 const I_PRESSURE = slot('pressurePlate');
+const I_ROD = slot('pressurePlate');
 const I_GEAR: Record<string, number> = {};
 for (const g of GEAR_ORDER) for (const end of ['in', 'out'] as const) I_GEAR[`${g}${end}`] = slot(`gear${g}${end}`);
 const I_FORK: Record<SliderId, number> = { A: slot('forkA'), B: slot('forkB'), C: slot('forkC') }; // C: the yoke
@@ -232,6 +240,7 @@ function layout(state: SimState, out: PartShape[]): void {
   setBox(out, I_PRIMARY, PRIMARY_X[0], CRANK_Y - DRIVE_R, PRIMARY_X[1], CRANK_Y + DRIVE_R);
   setBox(out, I_BASKET, BASKET_MOUTH_X, -BASKET_R, PRIMARY_X[1], BASKET_R);
   setBox(out, I_HUB, HUB_X[0], -HUB_R, HUB_X[1], HUB_R);
+  setBox(out, I_HUB_DRUM, HUB_X[0] - HUB_DRUM_LEN, -STEEL_INNER_R, HUB_X[0], STEEL_INNER_R);
 
   const gap = separation(state) * GAP_MAX;
   let x = HUB_X[0];
@@ -243,6 +252,7 @@ function layout(state: SimState, out: PartShape[]): void {
   }
   x -= gap;
   setBox(out, I_PRESSURE, x - PRESSURE.t, -PRESSURE.r, x, PRESSURE.r);
+  setBox(out, I_ROD, x - PRESSURE.t, -RELEASE_ROD.r, RELEASE_ROD.endX, RELEASE_ROD.r);
 
   for (const g of GEAR_ORDER) {
     for (const shaft of ['input', 'output'] as const) {
@@ -601,7 +611,8 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     ticks(PRIMARY_X[0], PRIMARY_X[1], IN_Y, DRIVEN_R, basketAngle, PARAMS.primary.driven, tickColour('clutchBasket'), 0.45);
     part('clutchHub', HUB_X[0], -HUB_R, HUB_X[1], HUB_R, COLORS.steel2);
     // the hub's drum carrying the steel plates, seen between the plates when they part
-    part('clutchHub', HUB_X[0] - HUB_DRUM_LEN, -STEEL_INNER_R, HUB_X[0], STEEL_INNER_R, COLORS.steel2, null);
+    const drum = shapes[I_HUB_DRUM];
+    part('clutchHub', drum.x, drum.y, drum.x + drum.w, drum.y + drum.h, COLORS.steel2, null);
     for (let i = 0; i < PLATE_COUNT; i++) {
       const s = shapes[I_PLATE0 + i];
       const friction = i % 2 === 0;
@@ -613,11 +624,19 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
         hot.has(s.id) && !slipping ? COLORS.ground : COLORS.third, 0.6);
     }
     const p = shapes[I_PRESSURE];
+    const drumEnd = shapes[I_HUB_DRUM].x;
+    for (const sign of SIGNS) { // spring posts, fixed to the hub, behind the plate
+      const y = sign * SPRING.r;
+      part('pressurePlate', SPRING.boltX, y - SPRING.post, drumEnd, y + SPRING.post, COLORS.steel3, null);
+    }
     part('pressurePlate', p.x, p.y, p.x + p.w, p.y + p.h, COLORS.steel2);
     for (const sign of SIGNS) {
       const y = sign * SPRING.r;
-      box(p.x - SPRING.len, y - SPRING.h / 2, p.x, y + SPRING.h / 2, COLORS.steel3, COLORS.third);
+      part('pressurePlate', SPRING.boltX, y - SPRING.h / 2, p.x, y + SPRING.h / 2, COLORS.steel3); // spring
+      part('pressurePlate', SPRING.boltX - SPRING.head, y - SPRING.h * 0.8, SPRING.boltX, y + SPRING.h * 0.8, COLORS.steel2); // bolt head
     }
+    const rod = shapes[I_ROD];
+    part('pressurePlate', rod.x, rod.y, rod.x + rod.w, rod.y + rod.h, COLORS.steel2);
   }
 
   function drawCase(): void {
