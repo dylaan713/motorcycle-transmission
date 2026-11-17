@@ -29,6 +29,8 @@ const WALL_HALF = 0.0002;
 const FORK_BOSS = DIM.fork.rodRadius + 0.005;
 const FORK_BOSS_LENGTH = 0.018;
 
+/** Radial depth of a fork's claw, from the collar radius outward, m. */
+export const FORK_CLAW_DEPTH = 0.006;
 /** Distance from a fork's rod axis to the tip of its guide pin, m. */
 export const FORK_PIN_REACH = FORK_BOSS + 0.007;
 /** Detent arm: roller centre distance from the pivot, and roller radius, m. */
@@ -58,17 +60,28 @@ export function starWheelRadiusAt(angle: number): number {
  * The drum: an (angle, x) grid whose radius drops by the groove depth inside each slider's groove.
  * The vertices either side of every groove edge are moved onto it, so walls are steep and follow
  * the groove exactly instead of stepping by a grid cell.
+ *
+ * `followerOffsets[s]` is how far round the drum (from +y toward +z) slider s's follower sits from
+ * the reference follower the drum is posed against; that slider's groove is cut that much further
+ * round, so every follower reads the same drum angle. Missing offsets are 0.
  */
-export function shiftDrum(length: number, grooveCentres: Record<SliderId, number>): BufferGeometry {
+export function shiftDrum(
+  length: number, grooveCentres: Record<SliderId, number>, followerOffsets: Partial<Record<SliderId, number>> = {},
+): BufferGeometry {
   const { radius: R, grooveDepth, grooveWidth } = DIM.drum;
   const angles = Array.from({ length: ANGLE_STEPS }, (_, j) => (2 * Math.PI * j) / ANGLE_STEPS);
+  const TWO_PI = 2 * Math.PI;
+  const drumAngleAt = (a: number): number => {
+    const w = ((a % TWO_PI) + TWO_PI) % TWO_PI;
+    return w > TWO_PI - GROOVE_RUNOUT ? w - TWO_PI : w;
+  };
   const rows = angles.map((a) => {
     const xs = Array.from({ length: AXIAL_STEPS + 1 }, (_, i) => -length / 2 + (length * i) / AXIAL_STEPS);
-    const drum = a > 2 * Math.PI - GROOVE_RUNOUT ? a - 2 * Math.PI : a;
-    const used = drum >= -GROOVE_RUNOUT && drum <= deg(300) + GROOVE_RUNOUT;
-    const centres = used
-      ? SLIDERS.map((s) => grooveCentres[s] + grooveAxialOffset(s, Math.min(Math.max(drum, 0), deg(300))))
-      : [];
+    const centres = SLIDERS.flatMap((s) => {
+      const drum = drumAngleAt(a - (followerOffsets[s] ?? 0));
+      const used = drum >= -GROOVE_RUNOUT && drum <= deg(300) + GROOVE_RUNOUT;
+      return used ? [grooveCentres[s] + grooveAxialOffset(s, Math.min(Math.max(drum, 0), deg(300)))] : [];
+    });
     const inside = (x: number): boolean => centres.some((c) => Math.abs(x - c) < grooveWidth / 2);
     const deep = xs.map(inside);
     if (deep[0] || deep[AXIAL_STEPS]) throw new Error('a groove runs off the end of the drum');
@@ -101,7 +114,7 @@ export function shiftDrum(length: number, grooveCentres: Record<SliderId, number
  */
 export function shiftFork(o: { reach: number; collarRadius: number }): BufferGeometry {
   const t = DIM.fork.thickness / 2;
-  const rIn = o.collarRadius, rOut = o.collarRadius + 0.006;
+  const rIn = o.collarRadius, rOut = o.collarRadius + FORK_CLAW_DEPTH;
   const half = 0.0055, root = DIM.fork.rodRadius + 0.0012;  // arm half-height; arm ends inside the boss wall
   const gamma = Math.asin(half / rOut);
   if (o.reach - rOut * Math.cos(gamma) <= root) throw new Error('fork claw overlaps its boss');

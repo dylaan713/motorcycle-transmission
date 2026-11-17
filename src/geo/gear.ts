@@ -137,3 +137,21 @@ export function dogRing(o: { count: number; widthDeg: number; innerRadius: numbe
   });
   return toGeometry(lugs);
 }
+
+/**
+ * A sliding gear with a shift-fork groove: over the middle `grooveWidth` of the face the teeth are
+ * cut away down to `grooveRadius`, leaving two tooth bands joined by the hub. A fork claw riding in
+ * the groove stays below the reach of the meshing gear's tips.
+ */
+export function forkGroovedGear(o: {
+  teeth: number; module: number; faceWidth: number; boreRadius: number; grooveWidth: number; grooveRadius: number;
+}): BufferGeometry {
+  const rootRadius = (o.teeth * o.module) / 2 - DIM.dedendum * o.module;
+  if (!(o.grooveRadius > o.boreRadius && o.grooveRadius < rootRadius)) throw new Error('groove radius must lie between the bore and the root');
+  if (!(o.grooveWidth > 0 && o.grooveWidth < o.faceWidth)) throw new Error('groove must be narrower than the face');
+  const bore = circle(o.boreRadius, segmentsFor(o.boreRadius, BORE_CHORD, 24));
+  const profile = gearProfile(o.teeth, o.module);
+  const h = o.faceWidth / 2, g = o.grooveWidth / 2;
+  const hub = prism(circle(o.grooveRadius, segmentsFor(o.grooveRadius, BORE_CHORD, 24)), [bore], -g, g);
+  return toGeometry([prism(profile, [bore], -h, -g), hub, prism(profile, [bore], g, h)]);
+}
