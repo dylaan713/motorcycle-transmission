@@ -3,12 +3,12 @@ import { GEAR_ORDER, drawnAngles } from '../model/geometry';
 import { PARTS, type PartId } from '../model/parts';
 import { COLORS } from '../ui/tokens';
 import { drawClutch, drawCrank } from './draw/clutch';
-import { drawDrum, drawStar } from './draw/drum';
+import { drawDrum, drawShiftMechanism, drawStar } from './draw/drum';
 import { drawFinalDrive } from './draw/finalDrive';
 import { drawCase, drawDogs, drawForkBehind, drawForksFront, drawGear, drawShafts, drawSliderWeb } from './draw/gearbox';
 import { createLabels } from './draw/labels';
-import { createFlow } from './flow';
-import { EXTENT, SLIDERS, layout, newShapes } from './layout';
+import { createFlow, torqueCarriers } from './flow';
+import { EXTENT, SLIDERS, layout, newShapes, pickShape } from './layout';
 import { LABEL_PX, Painter } from './paint';
 
 const TORQUE_FULL = 150; // N·m at which a part carrying torque is filled at full opacity
@@ -52,8 +52,7 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       layout(state, shapes);
       laidOut = true;
       if (p.scale <= 0) return;
-      p.hot.clear();
-      for (const id of path.parts) p.hot.add(id);
+      torqueCarriers(path, state, p.hot);
       p.hotAlpha = 0.35 + 0.65 * Math.min(1, Math.abs(path.torque) / TORQUE_FULL);
       const ang = drawnAngles(state);
 
@@ -72,8 +71,9 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
       drawSliderWeb(p, shapes);
       for (const s of SLIDERS) drawDogs(p, shapes, state, s);
       drawForksFront(p, state);
-      drawFinalDrive(p, ang.output, ang.wheel);
+      drawFinalDrive(p, shapes, ang.output, ang.wheel);
       drawStar(p, state);
+      drawShiftMechanism(p, state);
       flow.build(state, path, shapes);
       p.base = Math.min(1, p.reveal); ctx.globalAlpha = p.base;
       flow.draw(p, path);
@@ -95,13 +95,8 @@ export function createSchematic(canvas: HTMLCanvasElement): View {
     pick(x, y) {
       if (!laidOut || p.scale <= 0) return null;
       const mx = (x - p.ox) / p.scale, my = (y - p.oy) / p.scale;
-      for (const tol of [0, 4 / p.scale]) {
-        for (let i = shapes.length - 1; i >= 0; i--) {
-          const s = shapes[i];
-          if (mx >= s.x - tol && mx <= s.x + s.w + tol && my >= s.y - tol && my <= s.y + s.h + tol) return s.id;
-        }
-      }
-      return null;
+      // exact first, then within 4 CSS px so thin parts can be hit
+      return pickShape(shapes, mx, my) ?? pickShape(shapes, mx, my, 4 / p.scale);
     },
     setHighlight(id) { highlight = id; },
     setReveal(progress) {

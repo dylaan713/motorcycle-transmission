@@ -1,7 +1,7 @@
 import { PARAMS } from '../../sim/params';
 import { COLORS } from '../../ui/tokens';
 import {
-  BASKET_BACK_X, BASKET_MOUTH_X, BASKET_R, BASKET_RIM, CRANK, CRANK_Y, DRIVE_R, DRIVEN_R, HUB_R, HUB_X,
+  BASKET_BACK_X, BASKET_BORE, BEARING_GAP, CRANK, I_BASKET_BACK, I_BASKET_RIM, I_DRIVEN, SHAFT_R, CRANK_Y, DRIVE_R, DRIVEN_R, HUB_R, HUB_X,
   I_HUB_DRUM, I_PLATE0, I_PRESSURE, I_ROD, IN_Y, PLATE_COUNT, PRIMARY_X, SIGNS, SPRING, type PartShape,
 } from '../layout';
 import type { Painter } from '../paint';
@@ -28,16 +28,23 @@ export function drawCrank(p: Painter, crankAngle: number): void {
 
 /** Basket in section with its driven gear, hub, plate stack, pressure plate, springs and release rod. */
 export function drawClutch(p: Painter, shapes: readonly PartShape[], basketAngle: number, inputAngle: number, slipping: boolean): void {
-  // basket: rim in section, back wall, and the primary driven gear riveted to it
-  p.part('clutchBasket', BASKET_MOUTH_X, -BASKET_R, BASKET_BACK_X[0], -BASKET_R + BASKET_RIM, COLORS.steel2);
-  p.part('clutchBasket', BASKET_MOUTH_X, BASKET_R - BASKET_RIM, BASKET_BACK_X[0], BASKET_R, COLORS.steel2);
-  p.part('clutchBasket', BASKET_BACK_X[0], -BASKET_R, BASKET_BACK_X[1], BASKET_R, COLORS.steel2);
-  p.part('clutchBasket', PRIMARY_X[0], -DRIVEN_R, PRIMARY_X[1], DRIVEN_R, COLORS.steel2);
+  // basket: rim in section, back wall, and the primary driven gear riveted to it, all running free
+  // on the input shaft on a needle bearing in their bore
+  for (const set of [I_BASKET_RIM, I_BASKET_BACK, I_DRIVEN]) {
+    for (const i of set) { const s = shapes[i]; p.part(s.id, s.x, s.y, s.x + s.w, s.y + s.h, COLORS.steel2); }
+  }
   p.ticks(PRIMARY_X[0], PRIMARY_X[1], IN_Y, DRIVEN_R, basketAngle, PARAMS.primary.driven, p.tickColour('clutchBasket'), 0.45);
+  for (const sign of SIGNS) {
+    const r0 = SHAFT_R.input + BEARING_GAP;
+    p.box(BASKET_BACK_X[0], sign * r0, PRIMARY_X[1], sign * BASKET_BORE, COLORS.steel1, COLORS.third);
+  }
   p.part('clutchHub', HUB_X[0], -HUB_R, HUB_X[1], HUB_R, COLORS.steel2);
   // the hub's drum carrying the steel plates, seen between the plates when they part
   const drum = shapes[I_HUB_DRUM];
   p.part('clutchHub', drum.x, drum.y, drum.x + drum.w, drum.y + drum.h, COLORS.steel2, null);
+  // the release rod runs in the hollow input shaft; only its lifter shows, outboard of the plate
+  const rod = shapes[I_ROD];
+  p.part('pressurePlate', rod.x, rod.y, rod.x + rod.w, rod.y + rod.h, COLORS.steel2);
   for (let i = 0; i < PLATE_COUNT; i++) {
     const s = shapes[I_PLATE0 + i];
     const friction = i % 2 === 0;
@@ -60,6 +67,4 @@ export function drawClutch(p: Painter, shapes: readonly PartShape[], basketAngle
     p.part('pressurePlate', SPRING.boltX, y - SPRING.h / 2, pp.x, y + SPRING.h / 2, COLORS.steel3); // spring
     p.part('pressurePlate', SPRING.boltX - SPRING.head, y - SPRING.h * 0.8, SPRING.boltX, y + SPRING.h * 0.8, COLORS.steel2); // bolt head
   }
-  const rod = shapes[I_ROD];
-  p.part('pressurePlate', rod.x, rod.y, rod.x + rod.w, rod.y + rod.h, COLORS.steel2);
 }

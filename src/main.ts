@@ -36,9 +36,19 @@ canvas.setAttribute('role', 'img');
 canvas.setAttribute('aria-label', 'Cutaway schematic of the clutch, gearbox and final drive, with the torque path in orange');
 stage.append(canvas);
 const view = createSchematic(canvas);
+let stageW = 0, stageH = 0;
 new ResizeObserver(([entry]) => {
-  view.resize(entry.contentRect.width, entry.contentRect.height, window.devicePixelRatio || 1);
+  stageW = entry.contentRect.width; stageH = entry.contentRect.height;
+  view.resize(stageW, stageH, window.devicePixelRatio || 1);
 }).observe(canvas);
+// a change of pixel ratio alone (another monitor, or zoom) resizes nothing, so watch for it too
+const watchPixelRatio = (): void => {
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => {
+    view.resize(stageW, stageH, window.devicePixelRatio || 1);
+    watchPixelRatio(); // the query names one ratio: re-arm for the new one
+  }, { once: true });
+};
+watchPixelRatio();
 
 const readouts = mountReadouts(document.querySelector<HTMLElement>('.app-header')!, document.getElementById('live')!);
 const panel = mountPanel(document.getElementById('panel')!);

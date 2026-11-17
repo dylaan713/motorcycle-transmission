@@ -1,22 +1,42 @@
 import { gearKind } from '../model/geometry';
-import type { GearNo } from '../model/parts';
+import type { GearNo, PartId } from '../model/parts';
 import type { TorquePath } from '../model/torquePath';
 import type { SimState } from '../sim/types';
 import { COLORS } from '../ui/tokens';
 import {
   AXIS_Y, CHAIN_PTS, CRANK, CRANK_Y, DRIVEN_R, GEAR_OF, I_PLATE0, IN_Y, INSET, MM, OUT_Y, PLATE_COUNT, PRIMARY_X,
-  SLIDERS, SPROCKET_R, SPROCKET_X, gearIndex, gearX, sliderShift, type PartShape,
+  SLIDER_OF, SLIDERS, SPROCKET_X, gearIndex, gearX, sliderShift, type PartShape,
 } from './layout';
 import { DASH, NO_DASH, type Painter } from './paint';
 
+const SLIDER_C = SLIDER_OF.C;
+
 const MAX_FLOW = 48;
+
+/**
+ * The parts to fill as carrying torque: the path's parts, and the 3rd/4th sliding piece whole
+ * whenever it drives (in 5th or 6th either half listed means both, since they are one rigid piece).
+ */
+export function torqueCarriers(path: TorquePath, state: SimState, out: Set<PartId>): void {
+  out.clear();
+  for (const id of path.parts) out.add(id);
+  const cDrives = state.lockedGear === SLIDER_C.neg.free || state.lockedGear === SLIDER_C.pos.free;
+  if (cDrives && (out.has('gear3in') || out.has('gear4in'))) { out.add('gear3in'); out.add('gear4in'); }
+}
 
 /**
  * The torque line: a polyline through the parts of the torque path in order. Shafts are followed
  * along their axis, the clutch through the upper half of its section, and a locked gear through
  * its slider's body and the engaged dogs.
  */
-export function createFlow(): { build(state: SimState, path: TorquePath, shapes: readonly PartShape[]): void; draw(p: Painter, path: TorquePath): void } {
+export interface Flow {
+  build(state: SimState, path: TorquePath, shapes: readonly PartShape[]): void;
+  draw(p: Painter, path: TorquePath): void;
+  /** The line's points as x, y pairs, model metres (a copy, for tests). */
+  points(): number[];
+}
+
+export function createFlow(): Flow {
   const flow = new Float64Array(MAX_FLOW * 2);
   let n = 0;
 
@@ -64,9 +84,9 @@ export function createFlow(): { build(state: SimState, path: TorquePath, shapes:
           case 'outputShaft': break; // the line runs along its axis from the gear to the sprocket
           case 'sprocket': push((SPROCKET_X[0] + SPROCKET_X[1]) / 2, OUT_Y); break;
           case 'chain':
-            push((SPROCKET_X[0] + SPROCKET_X[1]) / 2, OUT_Y + SPROCKET_R);
-            push(CHAIN_PTS.frontTop.x, CHAIN_PTS.frontTop.y);
-            push(CHAIN_PTS.rearTop.x, CHAIN_PTS.rearTop.y);
+            // the loaded strand: the top one under drive, the bottom one when the wheel drives the engine
+            if (path.torque < 0) { push(CHAIN_PTS.frontBottom.x, CHAIN_PTS.frontBottom.y); push(CHAIN_PTS.rearBottom.x, CHAIN_PTS.rearBottom.y); }
+            else { push(CHAIN_PTS.frontTop.x, CHAIN_PTS.frontTop.y); push(CHAIN_PTS.rearTop.x, CHAIN_PTS.rearTop.y); }
             break;
           case 'rearSprocket': push(INSET.rear.x, INSET.rear.y); break;
           case 'rearWheel': push(INSET.rear.x, INSET.rear.y + INSET.wheel.r); break;
@@ -102,5 +122,6 @@ export function createFlow(): { build(state: SimState, path: TorquePath, shapes:
       ctx.setLineDash(NO_DASH);
       ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
     },
+    points: () => Array.from(flow.subarray(0, 2 * n)),
   };
 }

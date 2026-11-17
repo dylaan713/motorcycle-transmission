@@ -5,7 +5,7 @@ import type { SimState } from '../../sim/types';
 import { COLORS } from '../../ui/tokens';
 import {
   AXIS_Y, BEARING, C_HUB_R, CURSOR_Y, DOG_GEAR_W, DOG_PITCH, DOG_SLIDER_W, DOGS, FORK_W, IN_SHAFT_X, IN_Y, LUG_LEN, MM,
-  OUT_SHAFT_X, OUT_Y, PIN_R, SHAFT_R, SLIDER_OF, SLIDERS, WALL_PIECES, WALLS, dogLugAngles, gearIndex, norm, pinX,
+  OUT_SHAFT_X, OUT_Y, PIN_R, SHAFT_R, SLIDER_OF, SLIDERS, WALL_PIECES, WALLS, I_WEB, dogLugAngles, gearIndex, norm,
   sliderShift, type PartShape, type Shaft, type SliderDraw,
 } from '../layout';
 import type { Painter } from '../paint';
@@ -36,11 +36,13 @@ export function drawGear(p: Painter, shapes: readonly PartShape[], state: SimSta
   p.ticks(s.x, s.x + s.w, AXIS_Y[shaft], s.h / 2, gearAngle(shaft, g, state.angles), teeth, p.tickColour(s.id), 0.55);
 }
 
-/** The web that makes third and fourth one sliding piece. */
+/** The web that makes third and fourth one sliding piece: orange only when the whole piece drives. */
 export function drawSliderWeb(p: Painter, shapes: readonly PartShape[]): void {
-  const g3 = shapes[gearIndex('input', 3)], g4 = shapes[gearIndex('input', 4)];
+  const w = shapes[I_WEB];
   p.fade('gear3in');
-  p.box(g3.x + g3.w, -C_HUB_R, g4.x, C_HUB_R, COLORS.steel2, COLORS.third);
+  p.box(w.x, w.y, w.x + w.w, w.y + w.h, COLORS.steel2, null);
+  if (p.hot.has('gear3in') && p.hot.has('gear4in')) p.hotBox(w.x, w.y, w.x + w.w, w.y + w.h);
+  p.box(w.x, w.y, w.x + w.w, w.y + w.h, null, COLORS.third);
 }
 
 /**
@@ -75,10 +77,11 @@ export function drawDogs(p: Painter, shapes: readonly PartShape[], state: SimSta
   }
 }
 
-function drawForkRod(p: Painter, id: PartId, pin: number, body: number, topY: number): void {
+/** A fork's rod, straight up its rail from the pin to the slider: a fork is rigid. */
+function drawForkRod(p: Painter, id: PartId, body: number, topY: number): void {
   const ctx = p.ctx;
   p.fade(id);
-  p.quad(pin, CURSOR_Y, body, topY, FORK_W / 2);
+  p.quad(body, CURSOR_Y, body, topY, FORK_W / 2);
   ctx.fillStyle = COLORS.steel3; ctx.fill();
   ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.stroke();
   p.hotPath(id);
@@ -87,20 +90,24 @@ function drawForkRod(p: Painter, id: PartId, pin: number, body: number, topY: nu
 /** Fork C's rod, which passes behind the output shaft and its gears. */
 export function drawForkBehind(p: Painter, state: SimState): void {
   const c = SLIDER_OF.C;
-  drawForkRod(p, 'forkC', pinX(state, c), c.restX + sliderShift(state, 'C'), IN_Y + C_HUB_R);
+  drawForkRod(p, 'forkC', c.restX + sliderShift(state, 'C'), IN_Y + C_HUB_R);
 }
 
-/** The forks for the output-shaft sliders, fork C's yoke and every fork's pin, in front of the gears. */
+/**
+ * The forks for the output-shaft sliders, fork C's yoke and every fork's pin, in front of the gears.
+ * The pin is on the fork, so when a slider lags its groove (a blocked dog) the pin shows off-centre
+ * in the groove track below.
+ */
 export function drawForksFront(p: Painter, state: SimState): void {
   for (const s of SLIDERS) {
     const body = s.restX + sliderShift(state, s.id);
     if (s.shaft === 'output') {
       const id: PartId = `fork${s.id}`;
-      drawForkRod(p, id, pinX(state, s), body, OUT_Y + pitchRadius('output', s.gears[0]));
+      drawForkRod(p, id, body, OUT_Y + pitchRadius('output', s.gears[0]));
       p.part(id, body - FORK_W / 2, OUT_Y + SHAFT_R.output + 1.5 * MM, body + FORK_W / 2, OUT_Y + pitchRadius('output', s.gears[0]), COLORS.steel3);
     } else {
       p.part('forkC', body - FORK_W / 2, IN_Y + SHAFT_R.input + 1 * MM, body + FORK_W / 2, IN_Y + C_HUB_R, COLORS.steel3);
     }
-    p.fillCircle(null, pinX(state, s), CURSOR_Y, PIN_R, COLORS.steel3, COLORS.ink);
+    p.fillCircle(`fork${s.id}`, body, CURSOR_Y, PIN_R, COLORS.steel3, COLORS.ink);
   }
 }

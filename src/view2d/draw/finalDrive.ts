@@ -1,26 +1,25 @@
 import { PARAMS } from '../../sim/params';
 import { COLORS } from '../../ui/tokens';
 import {
-  CHAIN_COS, CHAIN_PITCH, CHAIN_PTS, CHAIN_SIN, CHAIN_WRAP, INSET, MM, OUT_SHAFT_X, OUT_Y, SIGNS, SPROCKET_R, SPROCKET_X,
-  TWO_PI,
+  CHAIN_COS, CHAIN_PITCH, CHAIN_PTS, CHAIN_SIN, CHAIN_WRAP, I_CHAIN_WRAP, I_NUT, INSET, MM, OUT_Y, SPROCKET_R, SPROCKET_X,
+  TWO_PI, type PartShape,
 } from '../layout';
 import { DASH, NO_DASH, type Painter } from '../paint';
 
 const LINKS: number[] = [1, 2];
 
 /** The front sprocket edge-on with the chain wrapped on it, and the end-view inset (not to scale). */
-export function drawFinalDrive(p: Painter, outAngle: number, wheelAngle: number): void {
+export function drawFinalDrive(p: Painter, shapes: readonly PartShape[], outAngle: number, wheelAngle: number): void {
   const ctx = p.ctx;
   const chainFill = COLORS.steel3;
   p.part('sprocket', SPROCKET_X[0], OUT_Y - SPROCKET_R, SPROCKET_X[1], OUT_Y + SPROCKET_R, COLORS.steel2);
   p.ticks(SPROCKET_X[0], SPROCKET_X[1], OUT_Y, SPROCKET_R, outAngle, PARAMS.final.front, p.tickColour('sprocket'), 0.55);
-  const cx = (SPROCKET_X[0] + SPROCKET_X[1]) / 2, w = CHAIN_WRAP;
-  for (const sign of SIGNS) {
-    const y = OUT_Y + sign * SPROCKET_R;
-    p.part('chain', cx - w.half, y - w.h / 2, cx + w.half, y + w.h / 2, chainFill);
-  }
-  p.box(OUT_SHAFT_X[1] - 4 * MM, OUT_Y - 9 * MM, OUT_SHAFT_X[1], OUT_Y + 9 * MM, COLORS.steel2, COLORS.third); // nut
+  for (const i of I_CHAIN_WRAP) { const s = shapes[i]; p.part(s.id, s.x, s.y, s.x + s.w, s.y + s.h, chainFill); }
+  const nut = shapes[I_NUT];
+  p.part(nut.id, nut.x, nut.y, nut.x + nut.w, nut.y + nut.h, COLORS.steel2);
   // leader from the edge-on sprocket to the end view
+  const cx = (SPROCKET_X[0] + SPROCKET_X[1]) / 2, w = CHAIN_WRAP;
+  p.fade('sprocket');
   ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.setLineDash(DASH);
   ctx.beginPath();
   ctx.moveTo(p.X(cx + w.half + 1 * MM), p.Y(OUT_Y + SPROCKET_R));

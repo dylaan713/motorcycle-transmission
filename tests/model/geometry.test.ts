@@ -113,10 +113,9 @@ describe('the dog phase in the drawn frame', () => {
         sim.setState({ sliders: { [slider]: { phi: deg((i * 7.3) % 72), x: i % 2 ? 0.6 : -0.6 } } });
         const st = sim.getState();
         const side = st.sliders[slider].side;
-        const freeShaft = shaft === 'input' ? 'input' : 'output';
         const independent = wrap(
           gearAngle(shaft, g, st.angles) + sense * st.sliders[slider].phase[side]
-            - gearAngle(freeShaft, s[side], st.angles),
+            - gearAngle(shaft, s[side], st.angles), // the free gear rides the slider's shaft
           PITCH,
         );
         expect(phaseGap(drawnDogPhase(slider, side, st), independent)).toBeLessThan(1e-9);

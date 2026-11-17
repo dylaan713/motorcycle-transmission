@@ -4,8 +4,8 @@ import type { SimState } from '../../sim/types';
 import { deg } from '../../sim/units';
 import { COLORS } from '../../ui/tokens';
 import {
-  ARM_PIVOT, BAND, CURSOR_Y, DETENT_ANGLES, DETENT_LABELS, DETENT_NAMES, DRUM_R, GROOVE_W, MM, ROLLER_R, SLIDERS, STAR,
-  TRACK_RANGE, TWO_PI, starRadius,
+  ARM_PIVOT, BAND, CURSOR_Y, DETENT_ANGLES, DETENT_LABELS, DETENT_NAMES, DRUM_R, GROOVE_W, MM, PAWL, PEDAL, ROLLER_R,
+  SHIFT_SHAFT, SLIDERS, STAR, TRACK_RANGE, TWO_PI, pawlAngle, pedalTip, starRadius,
 } from '../layout';
 import type { Painter } from '../paint';
 
@@ -86,4 +86,25 @@ export function drawStar(p: Painter, state: SimState): void {
   ctx.beginPath(); ctx.moveTo(p.X(ARM_PIVOT.x), p.Y(ARM_PIVOT.y)); ctx.lineTo(p.X(rx), p.Y(STAR.y)); ctx.stroke();
   p.fillCircle('detentArm', ARM_PIVOT.x, ARM_PIVOT.y, 1.8 * MM, COLORS.steel2);
   p.fillCircle('detentArm', rx, STAR.y, ROLLER_R, COLORS.steel3);
+}
+
+/** The shift shaft end on, its pawl arm reaching the drum end's pins, and the pedal rocking on it. */
+export function drawShiftMechanism(p: Painter, state: SimState): void {
+  const ctx = p.ctx, ss = SHIFT_SHAFT;
+  const tip = pedalTip(state);
+  p.fade('pedal');
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(p.X(ss.x), p.Y(ss.y)); ctx.lineTo(p.X(tip.x), p.Y(tip.y));
+  ctx.strokeStyle = COLORS.steel3; ctx.lineWidth = Math.max(3, p.L(PEDAL.w)); ctx.stroke();
+  p.hotPath('pedal', true);
+  p.fillCircle('pedal', tip.x, tip.y, PEDAL.w * 0.8, COLORS.steel2); // the toe peg
+  const pa = pawlAngle(state);
+  const px = ss.x + PAWL.len * Math.cos(pa), py = ss.y + PAWL.len * Math.sin(pa);
+  p.fade('shiftShaft');
+  ctx.beginPath(); ctx.moveTo(p.X(ss.x), p.Y(ss.y)); ctx.lineTo(p.X(px), p.Y(py));
+  ctx.strokeStyle = COLORS.steel2; ctx.lineWidth = Math.max(2, p.L(PAWL.w)); ctx.stroke();
+  p.hotPath('shiftShaft', true);
+  ctx.lineCap = 'butt';
+  p.fillCircle('shiftShaft', px, py, PAWL.w * 0.6, COLORS.steel3); // pawl tip on a drum pin
+  p.fillCircle('shiftShaft', ss.x, ss.y, ss.r, COLORS.steel3);
 }

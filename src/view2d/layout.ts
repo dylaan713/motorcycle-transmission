@@ -4,12 +4,11 @@
  */
 import {
   CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, drawnDogPhase, gearAngle,
-  gearAxialPosition, gearKind, pitchRadius, sliderOfGear,
+  gearAxialPosition, pitchRadius, sliderOfGear,
 } from '../model/geometry';
 import type { GearNo, PartId } from '../model/parts';
 import { clutchCapacityMax } from '../sim/clutch';
 import { PARAMS } from '../sim/params';
-import { grooveCommand } from '../sim/shiftDrum';
 import type { DetentName, SimState, SliderId } from '../sim/types';
 import { clamp, deg } from '../sim/units';
 
@@ -43,6 +42,9 @@ export const PRIMARY_X = [-82 * MM, -70 * MM] as const;
 // Clutch, built leftward (outboard) from the hub's inner pressure face.
 export const BASKET_R = 74 * MM;
 export const BASKET_RIM = 2.5 * MM;
+// The basket and its driven gear run free on the input shaft on a needle bearing in this bore.
+export const BASKET_BORE = SHAFT_R.input + 3 * MM;
+export const BEARING_GAP = 0.8 * MM; // clearance drawn between shaft and bearing, so they read as separate
 export const BASKET_BACK_X = [-87 * MM, PRIMARY_X[0]] as const;
 // Long enough that the outermost friction plate stays in the basket at full release (16 gaps open).
 export const BASKET_MOUTH_X = -144 * MM;
@@ -61,7 +63,7 @@ export const HUB_DRUM_LEN = 47 * MM;
 // pressure plate, so they shorten as the lever pulls the plate outboard.
 export const SPRING = { r: 32 * MM, h: 5 * MM, post: 1.5 * MM, boltX: -153 * MM, head: 2 * MM };
 // Release rod: through the hollow input shaft to the lifter at the pressure plate's centre.
-export const RELEASE_ROD = { r: 3.5 * MM, endX: -118 * MM };
+export const RELEASE_ROD = { r: 3.5 * MM, endX: -118 * MM, lifter: 4 * MM }; // lifter: how far it stands out of the plate
 
 // Crank stub beside the primary drive gear: journal, two webs with the crankpin between, journal.
 export const CRANK = {
@@ -90,6 +92,7 @@ export const CHAIN_PITCH = 15.875 * MM;
 export const SPROCKET_R = CHAIN_PITCH / (2 * Math.sin(Math.PI / PARAMS.final.front));
 export const SPROCKET_X = [72 * MM, 80 * MM] as const;
 export const CHAIN_WRAP = { half: 6 * MM, h: 4 * MM };
+export const NUT = { w: 4 * MM, r: 9 * MM }; // on the output shaft's end, holding the sprocket
 // End-view inset, not to scale: sprocket radii keep the tooth ratio, the wheel does not.
 export const INSET = {
   front: { x: 104 * MM, y: 100 * MM, r: 6 * MM },
@@ -108,7 +111,20 @@ export const FORK_W = 3 * MM;
 export const TRACK_RANGE = [deg(-20), deg(320)] as const; // groove drawn beyond the end detents by this much
 export const STAR = { x: 79 * MM, y: CURSOR_Y, r: 14 * MM, hw: deg(13), depth: 3.2 * MM, depthN: 1.6 * MM };
 export const ROLLER_R = 3 * MM;
-export const ARM_PIVOT = { x: 86 * MM, y: CURSOR_Y + 22 * MM };
+export const ARM_PIVOT = { x: STAR.x + STAR.r + ROLLER_R, y: CURSOR_Y - 20 * MM }; // above the roller
+// Shift shaft, end on beside the star wheel: its pawl arm reaches the drum end's pins and the
+// pedal lever on its outer end rocks with the pedal travel.
+export const SHIFT_SHAFT = { x: 104 * MM, y: CURSOR_Y + 28 * MM, r: 4 * MM };
+export const PAWL = { len: 23 * MM, rest: Math.atan2(-18, -15), swing: deg(12), w: 2.4 * MM };
+export const PEDAL = { len: 26 * MM, rest: deg(10), swing: deg(20), w: 3 * MM };
+/** Angle of the pedal lever (canvas frame, y down): pedal up lifts the tip. */
+export const pedalAngle = (state: SimState): number => PEDAL.rest - state.pedal.travel * PEDAL.swing;
+/** Angle of the pawl arm, turning with the shift shaft. */
+export const pawlAngle = (state: SimState): number => PAWL.rest - state.pedal.travel * PAWL.swing;
+export const pedalTip = (state: SimState): { x: number; y: number } => {
+  const a = pedalAngle(state);
+  return { x: SHIFT_SHAFT.x + PEDAL.len * Math.cos(a), y: SHIFT_SHAFT.y + PEDAL.len * Math.sin(a) };
+};
 
 export const SIGNS = [-1, 1] as const;
 // the case wall between and either side of the bearings
@@ -179,17 +195,23 @@ export const I_OUT = slot('outputShaft');
 export const I_IN = slot('inputShaft');
 export const I_CRANK = slot('crank');
 export const I_PRIMARY = slot('primaryDrive');
-export const I_BASKET = slot('clutchBasket');
+export const I_BASKET_RIM = [slot('clutchBasket'), slot('clutchBasket')] as const; // top, bottom
+export const I_BASKET_BACK = [slot('clutchBasket'), slot('clutchBasket')] as const; // above, below the bore
+export const I_DRIVEN = [slot('clutchBasket'), slot('clutchBasket')] as const;
 export const I_HUB = slot('clutchHub');
 export const I_HUB_DRUM = slot('clutchHub');
+export const I_ROD = slot('pressurePlate'); // drawn under the plates: only its lifter shows
 export const I_PLATE0 = IDS.length;
 for (let i = 0; i < PLATE_COUNT; i++) slot(i % 2 === 0 ? 'frictionPlates' : 'steelPlates');
 export const I_PRESSURE = slot('pressurePlate');
-export const I_ROD = slot('pressurePlate');
+export const I_SPRING = [slot('pressurePlate'), slot('pressurePlate')] as const; // bolt head to plate
 export const I_GEAR: Record<string, number> = {};
 for (const g of GEAR_ORDER) for (const end of ['in', 'out'] as const) I_GEAR[`${g}${end}`] = slot(`gear${g}${end}`);
+export const I_WEB = slot('gear3in'); // the web joining third and fourth into one sliding piece
 export const I_FORK: Record<SliderId, number> = { A: slot('forkA'), B: slot('forkB'), C: slot('forkC') }; // C: the yoke
 export const I_SPROCKET = slot('sprocket');
+export const I_CHAIN_WRAP = [slot('chain'), slot('chain')] as const; // on the edge-on sprocket, top and bottom
+export const I_NUT = slot('outputShaft');
 export const I_WHEEL = slot('rearWheel');
 export const I_REAR = slot('rearSprocket');
 export const I_SPROCKET_END = slot('sprocket'); // the front sprocket again, in the end view
@@ -197,6 +219,8 @@ export const I_CHAIN_TOP = slot('chain');
 export const I_CHAIN_BOTTOM = slot('chain');
 export const I_STAR = slot('starWheel');
 export const I_ARM = slot('detentArm');
+export const I_PEDAL = slot('pedal'); // behind the shaft end it is clamped to
+export const I_SHIFT_SHAFT = slot('shiftShaft');
 
 export const GEAR_OF: Partial<Record<PartId, { g: GearNo; shaft: Shaft }>> = {};
 for (const g of GEAR_ORDER) { GEAR_OF[`gear${g}in`] = { g, shaft: 'input' }; GEAR_OF[`gear${g}out`] = { g, shaft: 'output' }; }
@@ -215,9 +239,6 @@ export function gearX(state: SimState, shaft: Shaft, g: GearNo): number {
   const id = sliderOfGear(shaft, g);
   return gearAxialPosition(g) + (id === null ? 0 : sliderShift(state, id));
 }
-/** Axial position of a fork's pin: where its groove is at the current drum angle, m. */
-export const pinX = (state: SimState, s: SliderDraw): number =>
-  s.restX + grooveCommand(s.id, state.drum.angle) * SLIDER_TRAVEL;
 /** Clutch plate separation, 0 clamped .. 1 fully released. */
 export const separation = (state: SimState): number => 1 - clamp(state.clutch.capacity / clutchCapacityMax, 0, 1);
 
@@ -239,7 +260,11 @@ export function layout(state: SimState, out: PartShape[]): void {
   setBox(out, I_IN, IN_SHAFT_X[0], IN_Y - SHAFT_R.input, IN_SHAFT_X[1], IN_Y + SHAFT_R.input);
   setBox(out, I_CRANK, CRANK.journal.x[0], CRANK_Y - CRANK.web1.r, CRANK.stub.x[1], CRANK_Y + CRANK.web1.r);
   setBox(out, I_PRIMARY, PRIMARY_X[0], CRANK_Y - DRIVE_R, PRIMARY_X[1], CRANK_Y + DRIVE_R);
-  setBox(out, I_BASKET, BASKET_MOUTH_X, -BASKET_R, PRIMARY_X[1], BASKET_R);
+  for (const [k, sign] of [[0, -1], [1, 1]] as const) {
+    setBox(out, I_BASKET_RIM[k], BASKET_MOUTH_X, sign * BASKET_R, BASKET_BACK_X[0], sign * (BASKET_R - BASKET_RIM));
+    setBox(out, I_BASKET_BACK[k], BASKET_BACK_X[0], sign * BASKET_R, BASKET_BACK_X[1], sign * BASKET_BORE);
+    setBox(out, I_DRIVEN[k], PRIMARY_X[0], sign * DRIVEN_R, PRIMARY_X[1], sign * BASKET_BORE);
+  }
   setBox(out, I_HUB, HUB_X[0], -HUB_R, HUB_X[1], HUB_R);
   setBox(out, I_HUB_DRUM, HUB_X[0] - HUB_DRUM_LEN, -STEEL_INNER_R, HUB_X[0], STEEL_INNER_R);
 
@@ -253,7 +278,10 @@ export function layout(state: SimState, out: PartShape[]): void {
   }
   x -= gap;
   setBox(out, I_PRESSURE, x - PRESSURE.t, -PRESSURE.r, x, PRESSURE.r);
-  setBox(out, I_ROD, x - PRESSURE.t, -RELEASE_ROD.r, RELEASE_ROD.endX, RELEASE_ROD.r);
+  setBox(out, I_ROD, x - PRESSURE.t - RELEASE_ROD.lifter, -RELEASE_ROD.r, RELEASE_ROD.endX, RELEASE_ROD.r);
+  for (const [k, sign] of [[0, -1], [1, 1]] as const) {
+    setBox(out, I_SPRING[k], SPRING.boltX - SPRING.head, sign * SPRING.r - SPRING.h * 0.8, x - PRESSURE.t, sign * SPRING.r + SPRING.h * 0.8);
+  }
 
   for (const g of GEAR_ORDER) {
     for (const shaft of ['input', 'output'] as const) {
@@ -262,9 +290,10 @@ export function layout(state: SimState, out: PartShape[]): void {
     }
   }
 
+  // a fork is rigid on its rail: straight at its slider; its pin sits wherever that puts it in the groove
   for (const s of SLIDERS) {
-    const body = s.restX + sliderShift(state, s.id), pin = pinX(state, s);
-    const x0 = Math.min(body, pin) - FORK_W / 2, x1 = Math.max(body, pin) + FORK_W / 2;
+    const body = s.restX + sliderShift(state, s.id);
+    const x0 = body - FORK_W / 2, x1 = body + FORK_W / 2;
     if (s.shaft === 'output') {
       setBox(out, I_FORK[s.id], x0, OUT_Y + SHAFT_R.output + 1.5 * MM, x1, CURSOR_Y + PIN_R);
     } else {
@@ -273,7 +302,15 @@ export function layout(state: SimState, out: PartShape[]): void {
     }
   }
 
+  const g3 = out[gearIndex('input', 3)], g4 = out[gearIndex('input', 4)];
+  setBox(out, I_WEB, g3.x + g3.w, -C_HUB_R, g4.x, C_HUB_R);
   setBox(out, I_SPROCKET, SPROCKET_X[0], OUT_Y - SPROCKET_R, SPROCKET_X[1], OUT_Y + SPROCKET_R);
+  const scx = (SPROCKET_X[0] + SPROCKET_X[1]) / 2;
+  for (const [k, sign] of [[0, -1], [1, 1]] as const) {
+    const y = OUT_Y + sign * SPROCKET_R;
+    setBox(out, I_CHAIN_WRAP[k], scx - CHAIN_WRAP.half, y - CHAIN_WRAP.h / 2, scx + CHAIN_WRAP.half, y + CHAIN_WRAP.h / 2);
+  }
+  setBox(out, I_NUT, OUT_SHAFT_X[1] - NUT.w, OUT_Y - NUT.r, OUT_SHAFT_X[1], OUT_Y + NUT.r);
   const { front, rear, wheel } = INSET;
   setBox(out, I_WHEEL, rear.x - wheel.r, rear.y - wheel.r, rear.x + wheel.r, rear.y + wheel.r);
   setBox(out, I_REAR, rear.x - rear.r, rear.y - rear.r, rear.x + rear.r, rear.y + rear.r);
@@ -282,10 +319,27 @@ export function layout(state: SimState, out: PartShape[]): void {
   setBox(out, I_CHAIN_TOP, c.frontTop.x, c.frontTop.y - pad, c.rearTop.x, c.rearTop.y + pad);
   setBox(out, I_CHAIN_BOTTOM, c.frontBottom.x, c.frontBottom.y + pad, c.rearBottom.x, c.rearBottom.y - pad);
   setBox(out, I_STAR, STAR.x - STAR.r, STAR.y - STAR.r, STAR.x + STAR.r, STAR.y + STAR.r);
-  setBox(out, I_ARM, ARM_PIVOT.x - 2 * MM, STAR.y - ROLLER_R, STAR.x + STAR.r + 2 * ROLLER_R, ARM_PIVOT.y + 2 * MM);
+  setBox(out, I_ARM, ARM_PIVOT.x - ROLLER_R, ARM_PIVOT.y - 2 * MM, ARM_PIVOT.x + ROLLER_R, STAR.y + ROLLER_R);
+  const ss = SHIFT_SHAFT, pa = pawlAngle(state);
+  const pawlX = ss.x + PAWL.len * Math.cos(pa), pawlY = ss.y + PAWL.len * Math.sin(pa);
+  setBox(out, I_SHIFT_SHAFT, Math.min(ss.x - ss.r, pawlX), Math.min(ss.y - ss.r, pawlY), Math.max(ss.x + ss.r, pawlX), Math.max(ss.y + ss.r, pawlY));
+  const tip = pedalTip(state), half = PEDAL.w / 2;
+  setBox(out, I_PEDAL, Math.min(ss.x, tip.x) - half, Math.min(ss.y, tip.y) - half, Math.max(ss.x, tip.x) + half, Math.max(ss.y, tip.y) + half);
 }
 
 export const newShapes = (): PartShape[] => IDS.map((id) => ({ id, x: 0, y: 0, w: 0, h: 0 }));
+
+/**
+ * The top-most shape containing (x, y), model metres, grown by `tol` on every side: the shape list
+ * is in draw order, so it is searched from the end.
+ */
+export function pickShape(shapes: readonly PartShape[], x: number, y: number, tol = 0): PartId | null {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    if (x >= s.x - tol && x <= s.x + s.w + tol && y >= s.y - tol && y <= s.y + s.h + tol) return s.id;
+  }
+  return null;
+}
 
 /** Pure: where every part is drawn for this state, in model metres on the schematic plane. */
 export function schematicShapes(state: SimState): PartShape[] {
