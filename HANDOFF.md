@@ -1,34 +1,57 @@
 # HANDOFF
 
-## State Update (2026-11-16, 22:50 EST, owner asleep; overnight run)
+## State Update (2026-11-17, 07:30 EST, session closed by the owner)
 
-- **Done:** Stages 1 and 2 complete and reviewed. Stage 3 (3D model) built; its whole-stage review
-  found 6 defects (bike mirrored left to right, no clutch release mechanism, pawl with no pins,
-  basket with no bearing, chain blob, primary drive out of proportion, flaky test timeouts) and a
-  fix wave is running. Stage 5's nine lessons are written and tested; a copy fix round is running.
-  The owner called the page "kind of boring", was shown three design options and chose
-  **B, "The instrument"** (`docs/design-options/option-b-*.png`, not tracked in git).
+- **What happened overnight:** almost nothing. The two builders that were running sat blocked on
+  Bash permission prompts from about 22:50 until 07:00, because the session's permission mode
+  asks before shell commands and nobody was there to answer. The planned overnight work
+  (redesign, stage 4, the rest of stages 5 and 6) did not run.
+- **Done and reviewed:** Stage 1 (simulation). Stage 2 (2D page, controls, panel). Stage 3 tasks 1
+  to 5 (3D model and view). Stage 5 task 1 (nine lessons) and task 2 (lesson runner).
+- **Committed but unfinished and unreviewed (builders were stopped mid-task at 07:25):**
+  - Stage 3 final-review fix wave. Landed: test timeouts (a2c5262), bike handedness (3bfbd03),
+    clutch release, shift pins and pawl action, basket bearing, chain link tones, primary
+    proportions (acb4f97). In the last `wip:` commit, partly done: torque highlight hue (I2),
+    provisional framing (C1 to C4), a new `src/view3d/cameraState.ts`. NOT started: most minors
+    (M1 to M16), `docs/SIMPLIFICATIONS.md`, the final report. Findings:
+    `.superpowers/sdd/2026-11-16-stage-3-3d-model/final-review-findings.md`.
+  - Stage 5 task 4 (How it works, glossary, `docs/MODEL.md`): files exist in a `wip:` commit; the
+    builder had just written them and was about to run the content tests. Treat as a draft.
+    Brief and dispatch notes: `.superpowers/sdd/2026-11-16-stage-5-teaching-layer/task-4-brief.md`
+    and that folder's `progress.md`.
+- **State of the tree at close:** clean; 368 tests passing; `tsc --noEmit` clean.
+- **Visual direction:** the owner chose **B, "The instrument"** (`docs/design-options/option-b-*.png`,
+  source and notes in `docs/design-options/b-source/`; that folder is not tracked in git).
 - **Next, in this order:**
-  1. Finish the stage 3 fix wave and its re-review
-     (`.superpowers/sdd/2026-11-16-stage-3-3d-model/final-review-findings.md`, report `final-fix-report.md`).
-  2. Finish the lessons fix round and its re-review
-     (`.superpowers/sdd/2026-11-16-stage-5-teaching-layer/task-1-findings.md`).
+  1. Finish the stage 3 fix wave from the findings file (a fresh builder: read the three landed
+     commits and the wip commit first), then one scoped re-review.
+  2. Finish and review stage 5 task 4 (content and `docs/MODEL.md`).
   3. **Stage 3b, the instrument** (visual redesign): `docs/superpowers/plans/2026-11-16-stage-3b-the-instrument.md`.
-  4. Stage 4 (slow motion, exploded view, x-ray, turning parts by hand, part focus), built in the new look.
-  5. Stage 5, remaining tasks (lesson runner, lesson row and step card, How it works, glossary, `docs/MODEL.md`).
-  6. Stage 6 (four audits, fix wave, demo-ride tuning, real-screen pass, README, licences, portfolio
-     draft, production build, final handoff).
+  4. Stage 4 (slow motion, exploded view, x-ray, turning parts by hand, part focus), in the new look:
+     `docs/superpowers/plans/2026-11-16-stage-4-interaction-depth.md`.
+  5. Stage 5 task 3 (lesson row and step card; wiring notes are in
+     `.superpowers/sdd/2026-11-16-stage-5-teaching-layer/task-2-report.md`), and wiring the content
+     into the drawer.
+  6. Stage 6: `docs/superpowers/plans/2026-11-16-stage-6-polish-and-publishing.md`.
+
+### Before an unattended run: permissions
+
+The overnight stall was a permission prompt, not a build failure. An unattended session must be
+started in a permission mode that does not ask before shell commands, or with allow rules for
+them. The agent cannot grant itself that (an attempt to write `.claude/settings.local.json` was
+refused, correctly). The owner sets it: either choose the mode when starting the session, or
+create `.claude/settings.local.json` in this folder by hand with the allow rules wanted.
 
 ### Resume here
 
 Run `git status`, `npm test` and `npm run typecheck` first. Build ledgers (git-ignored, on disk)
 are under `.superpowers/sdd/<plan name>/progress.md`; findings, briefs and reports sit beside
-them. The last line of each ledger says what was in flight.
+them.
 
 ### To restart
 
 Open a session in this folder and say: "Read HANDOFF.md and finish them all."
-Keep the Mac plugged in and the lid open. Start a keep-awake first
+Keep the Mac plugged in and the lid open, and start a keep-awake first
 (`caffeinate -i -s -t 43200` in the background).
 
 To see it now: `npm run dev`, then open the address it prints.
