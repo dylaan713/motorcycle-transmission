@@ -1,3 +1,4 @@
+import { clamp } from '../sim/units';
 import { el, setText } from './dom';
 
 /** How long the loader takes to fade out once the view is ready, in ms (matches styles.css). */
@@ -21,7 +22,7 @@ export function mountLoader(host: HTMLElement): Loader {
   host.append(root);
   return {
     progress(done, total, text) {
-      const p = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+      const p = total > 0 ? clamp(done / total, 0, 1) : 0;
       setText(label, text);
       setText(pct, `${Math.round(p * 100)}%`);
       fill.style.setProperty('--v', String(p));

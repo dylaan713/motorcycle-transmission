@@ -54,3 +54,10 @@ test('seeding takes over from the inputs in use, then each channel returns at it
   expect(c.inputs()).toMatchObject({ throttle: 0, pedal: 0, brake: 0 });
   expect(c.inputs().clutchLever).toBeCloseTo(0.5, 1);
 });
+test('reset puts the controls at rest with the ignition on, so the engine does not die again at once', () => {
+  const c = createControls();
+  c.toggleIgnition(); c.setPointer('throttle', 0.8); c.setPointer('throttle', null); c.setKey('KeyC', true); hold(c, 0.2);
+  c.setKey('KeyC', false);
+  c.reset();
+  expect(c.inputs()).toEqual({ ...NEUTRAL_INPUTS, ignition: true });
+});

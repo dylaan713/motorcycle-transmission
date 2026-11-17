@@ -1,6 +1,7 @@
 import { PARAMS } from '../sim/params';
 import type { InputSource } from '../sim/inputScript';
 import { NEUTRAL_INPUTS, type Inputs } from '../sim/types';
+import { clamp } from '../sim/units';
 
 export type Channel = 'throttle' | 'clutchLever' | 'brake' | 'pedalUp' | 'pedalDown';
 type Action = Channel | 'starter' | 'ignition' | 'reset';
@@ -34,6 +35,7 @@ export interface Controls {
   toggleIgnition(): void;
   releaseAll(): void; // every key, pointer and starter let go, e.g. when the window loses focus
   seed(inputs: Inputs): void; // take over from these inputs; each channel then ramps from there
+  reset(): void; // every channel at rest and the ignition on, as the simulation's reset leaves the bike
   update(dtSeconds: number): void; // advances the ramps
   inputs(): Inputs;
   readonly source: InputSource; // calls update with the step's dt, then inputs()
@@ -50,8 +52,6 @@ const RAMP: Record<Analog, { rise: number; fall: number }> = {
 const RANGE: Record<Analog, [min: number, max: number]> = {
   throttle: [0, 1], brake: [0, 1], clutchLever: [0, 1], pedal: [-1, 1],
 };
-
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /** Moves `value` toward `target` by at most `rate × dt`, landing on it exactly. */
 function approach(value: number, target: number, rate: number, dt: number): number {
@@ -106,6 +106,14 @@ export function createControls(): Controls {
     starter: starterKey || starterButton,
   });
 
+  const seed = (from: Inputs): void => {
+    for (const ch of Object.keys(value) as Analog[]) {
+      const [lo, hi] = RANGE[ch];
+      value[ch] = clamp(Number.isFinite(from[ch]) ? from[ch] : 0, lo, hi);
+    }
+    ignition = from.ignition;
+  };
+
   return {
     setKey(code, down) {
       if (!Object.hasOwn(KEYMAP, code)) return false;
@@ -131,13 +139,8 @@ export function createControls(): Controls {
       starterButton = false;
       for (const ch of Object.keys(pointer) as Analog[]) pointer[ch] = null;
     },
-    seed(from) {
-      for (const ch of Object.keys(value) as Analog[]) {
-        const [lo, hi] = RANGE[ch];
-        value[ch] = clamp(Number.isFinite(from[ch]) ? from[ch] : 0, lo, hi);
-      }
-      ignition = from.ignition;
-    },
+    seed,
+    reset() { seed({ ...NEUTRAL_INPUTS, ignition: true }); },
     update,
     inputs,
     source: () => { update(PARAMS.dt); return inputs(); },

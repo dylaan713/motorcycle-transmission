@@ -3,7 +3,7 @@ import { el, setText } from './dom';
 import type { Reading } from './readouts';
 
 /**
- * The mode chip in the header: "Demo ride" while the autopilot drives, a "Watch the demo" button
+ * The mode chip in the header, status and the way back: "Demo ride" while the autopilot drives, a "Watch the demo" button
  * once the visitor has taken over, and "Start the demo ride" when nobody rides (reduced motion).
  * Empty until `ready()`, so nothing flickers during the arrival.
  */
@@ -17,10 +17,10 @@ export function mountModeChip(host: HTMLElement, driver: Driver): { ready(): voi
     if (shown === 'demo') {
       const chip = el('div', 'chip', { tabindex: '-1' },
         el('span', 'chip-dot', { 'aria-hidden': 'true' }), el('span', 'chip-name', {}, 'Demo ride'),
-        // the full hint stays in the accessibility tree at every width; narrow screens show a short one
+        // a short hint on phones; at 1280px and wider the deck carries the invitation instead
         el('span', 'chip-hint', {},
           el('span', 'chip-hint-long', {}, 'touch any control to take over'),
-          el('span', 'chip-hint-short', { 'aria-hidden': 'true' }, 'any control takes over')));
+          el('span', 'chip-hint-short', {}, 'any control takes over')));
       host.replaceChildren(chip);
       if (hadFocus) chip.focus();
     } else {
@@ -41,28 +41,38 @@ const MESSAGES = {
   touch: { stalled: 'Stalled. Pull the clutch and press Start to restart.', off: 'Ignition off. Tap Ignition to switch it on.' },
 } as const;
 
-/** How long a one-off notice stays up, in ms. */
-const NOTICE_MS = 8000;
-
 /**
- * A polite live line for status changes (a stall, the ignition); never the changing numbers.
- * `notice` shows a one-off line for a while; a stall or ignition message takes precedence.
+ * What the status line says. A stall or ignition message takes precedence while it lasts. A notice
+ * (the 3D view paused or unavailable) stays until the next status change: another notice, its own
+ * `clear`, or a stall or ignition message, after which it is not shown again. Pure.
  */
-export function mountStatus(host: HTMLElement): { sync(r: Reading): void; notice(text: string): void } {
+export function createStatusText(): {
+  notice(text: string): void;
+  /** Clears the notice only if it is still `text`, so another message is never wiped. */
+  clear(text: string): void;
+  text(engine: Reading['engine'], touch: boolean): string;
+} {
+  let note = '';
+  return {
+    notice(text) { note = text; },
+    clear(text) { if (note === text) note = ''; },
+    text(engine, touch) {
+      const m = MESSAGES[touch ? 'touch' : 'keys'];
+      if (engine === 'stalled' || engine === 'off') { note = ''; return engine === 'stalled' ? m.stalled : m.off; }
+      return note;
+    },
+  };
+}
+
+/** A polite live line for status changes (a stall, the ignition, a notice); never the changing numbers. */
+export function mountStatus(host: HTMLElement): { sync(r: Reading): void; notice(text: string): void; clear(text: string): void } {
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
   const touch = matchMedia('(max-width: 899.98px), (pointer: coarse)');
-  let note = '';
-  let timer = 0;
+  const status = createStatusText();
   return {
-    sync(r) {
-      const m = MESSAGES[touch.matches ? 'touch' : 'keys'];
-      setText(host, r.engine === 'stalled' ? m.stalled : r.engine === 'off' ? m.off : note);
-    },
-    notice(text) {
-      note = text;
-      clearTimeout(timer);
-      timer = window.setTimeout(() => { note = ''; }, NOTICE_MS);
-    },
+    sync(r) { setText(host, status.text(r.engine, touch.matches)); },
+    notice: status.notice,
+    clear: status.clear,
   };
 }
