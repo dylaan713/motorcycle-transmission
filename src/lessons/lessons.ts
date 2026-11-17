@@ -1,7 +1,7 @@
 import { PARAMS } from '../sim/params';
 import { deg } from '../sim/units';
 import { primaryRatio } from '../sim/kinematics';
-import { inGearPatch } from '../sim/states';
+import { engineOffPatch, inGearPatch } from '../sim/states';
 import { keyframes, pedalStroke } from '../sim/inputScript';
 import type { DeepPartial, GearId, SimState } from '../sim/types';
 import { torquePath } from '../model/torquePath';
@@ -9,9 +9,6 @@ import type { PartId } from '../model/parts';
 import type { Lesson, LessonStep } from './types';
 
 export type { Lesson, LessonStep } from './types';
-
-/** Dog angle that puts a slider's dogs face to face with the lugs: mid-way between two slots. */
-const FACE_TO_FACE = deg(40);
 
 /**
  * Resolves a step's start to what the runner applies: 'keep' (carry on), 'reset', or a setState
@@ -21,14 +18,7 @@ export function startState(step: LessonStep): DeepPartial<SimState> | 'reset' | 
   const st = step.start ?? 'keep';
   if (st === 'keep' || st === 'reset') return st;
   if ('gear' in st) return inGearPatch(st.gear, st.rpm);
-  const patch: DeepPartial<SimState> = {
-    engine: { omega: 0, running: false },
-    inputShaftOmega: 0,
-    outputShaftOmega: 0,
-    drum: { angle: deg(st.drumDeg ?? PARAMS.drum.detents.N), omega: 0 },
-  };
-  if (st.misaligned) patch.sliders = { [st.misaligned]: { phi: FACE_TO_FACE } };
-  return patch;
+  return engineOffPatch(st.drumDeg ?? PARAMS.drum.detents.N, st.misaligned);
 }
 
 // ---- Outcome helpers: all read from simulated state, never from script timings ----------------
@@ -66,10 +56,6 @@ function upshifts(times: number[], throttle: number) {
   return keyframes({ clutchLever, pedal, throttle: thr });
 }
 
-/** Pedal pressed up at 0.3 s and held until `release`. */
-const heldUp = (release: number): Array<[number, number]> =>
-  [[0, 0], [0.3, 0], [0.36, 1], [release, 1], [release + 0.06, 0]];
-
 /**
  * A short upshift stroke that leaves the drum resting on the hump between the second and third
  * detents, where static friction outweighs the detent spring. Found by sweeping: from second with
@@ -101,13 +87,13 @@ const meet: Lesson = {
       title: 'The clutch',
       start: 'reset',
       view: { focus: 'clutchBasket', highlight: CLUTCH },
-      text: 'The clutch is a stack of plates squeezed together by springs. Friction plates turn with the engine and steel plates turn with the gearbox, so when squeezed they turn as one. Pulling the lever spreads them apart.',
+      text: 'The clutch is a stack of plates squeezed together by springs. Friction plates turn with the clutch basket, an outer case the engine turns, and steel plates turn with the gearbox, so squeezed they turn as one. Pulling the lever spreads them apart.',
     },
     {
       id: 'input-shaft',
       title: 'The input shaft',
       view: { focus: 'inputShaft', highlight: ['inputShaft', ...INPUT_GEARS] },
-      text: 'The clutch turns the input shaft, which carries one gear of each of six gear pairs. Each pair has its own mix of tooth counts, so each turns the other shaft at a different speed.',
+      text: 'The clutch turns the input shaft, which carries one gear of each of six gear pairs. Each pair has its own mix of tooth counts, so each would turn the other shaft at a different speed.',
     },
     {
       id: 'output-shaft',
@@ -119,19 +105,19 @@ const meet: Lesson = {
       id: 'dogs',
       title: 'The dogs',
       view: { explode: true, focus: 'gear5out', highlight: SLIDERS },
-      text: 'Three of the gears can slide along their shafts. Each has stubby teeth on its side, called dogs, that fit into slots in the free gear beside it. When the dogs drop in, that free gear is locked to its shaft and its pair carries the drive.',
+      text: 'Three sliding pieces turn with their shafts but can slide along them. Each has stubby teeth, called dogs, on its sides that can drop into slots in the free gear on either side of it. That locks the free gear to the shaft, and its pair carries the drive.',
     },
     {
       id: 'forks-and-drum',
       title: 'Forks and drum',
       view: { explode: true, focus: 'shiftDrum', highlight: SHIFTER },
-      text: 'Each sliding gear is moved by a fork that rides in a groove around the shift drum. Each pedal stroke turns the drum one step, and the grooves slide one set of dogs in. A sprung arm drops into a notch, called a detent, to hold the drum at each step.',
+      text: 'Each sliding piece is moved by a fork that rides in a groove around the shift drum. Each pedal stroke turns the drum one step: the grooves slide one set of dogs out and the next set in. A sprung roller drops into a notch to hold the drum at each step.',
     },
     {
       id: 'final-drive',
       title: 'The final drive',
       view: { focus: 'sprocket', highlight: FINAL_DRIVE },
-      text: 'The output shaft turns a small front sprocket, a toothed wheel that pulls the chain. The chain turns a larger sprocket on the rear wheel, which slows the turning once more and raises the force at the wheel.',
+      text: 'The output shaft turns a small front sprocket, a toothed wheel that pulls the chain. The chain turns a larger sprocket on the rear wheel, which slows the turning and raises the force there. Together these are the final drive.',
     },
   ],
 };
@@ -147,7 +133,7 @@ const pullClutch: Lesson = {
       title: 'Idling in neutral',
       start: 'reset',
       view: { xray: true, focus: 'clutchBasket', highlight: [...CLUTCH, 'inputShaft'] },
-      text: 'The engine is idling, running at its slowest steady speed, and the gearbox is in neutral, so no gear pair drives the wheel. The clutch plates are squeezed together, so the input shaft turns with the clutch basket.',
+      text: 'The engine is idling, running at its slowest steady speed, and the gearbox is in neutral, so no gear pair drives the wheel. The plates are squeezed, so the input shaft turns with the clutch basket, the outer case the engine turns.',
     },
     {
       id: 'pull',
@@ -156,14 +142,18 @@ const pullClutch: Lesson = {
       script: keyframes({ clutchLever: [[0, 0], [0.3, 0], [0.5, 1]] }),
       seconds: 2.5,
       view: { xray: true, focus: 'pressurePlate', highlight: [...CLUTCH, 'inputShaft'] },
-      text: 'Pulling the lever lifts the pressure plate, so the plates stop gripping and the engine is disconnected from the gearbox. Watch the input shaft: it does not stop. Oil between the plates drags it along, and it loses speed only slowly.',
-      // the clutch carries nothing for the whole hold, yet the shaft is still turning at the end
-      outcome: (f, trace) =>
-        f.clutch.capacity === 0
-        && secondsWhere(trace, (s) => s.clutch.capacity === 0) > 1.5
-        && !f.clutch.locked
-        && f.inputShaftOmega > 0.6 * basket(f)
-        && f.inputShaftOmega < basket(f),
+      text: 'Pulling the lever lifts the pressure plate, the plate the springs press on, so the stack lets go and the engine is disconnected. Watch the input shaft: it does not stop. Oil drags it, so it slows a little, then keeps turning at most of the basket’s speed.',
+      // the clutch carries nothing for the whole hold; the shaft never drops below half the basket's
+      // speed and settles at most of it, still slipping
+      outcome: (f, trace) => {
+        const held = trace.filter((s) => s.clutch.capacity === 0);
+        return f.clutch.capacity === 0
+          && held.length * 0.005 > 1.5
+          && held.every((s) => s.inputShaftOmega > 0.5 * basket(s))
+          && !f.clutch.locked
+          && f.inputShaftOmega > 0.6 * basket(f)
+          && f.inputShaftOmega < basket(f);
+      },
     },
     {
       id: 'release',
@@ -179,7 +169,7 @@ const pullClutch: Lesson = {
       id: 'try',
       title: 'Try the lever',
       view: { xray: true, focus: 'clutchBasket', highlight: [...CLUTCH, 'inputShaft'] },
-      text: 'The lever is yours now. Pull it in and the input shaft keeps spinning on its own; let it out and it is carried by the engine again.',
+      text: 'The lever is yours now. Pull it in and the input shaft keeps spinning, dragged by the oil; let it out and the engine carries it again.',
       tryIt: 'Pull the clutch lever, hold it for a few seconds, then let it go.',
     },
   ],
@@ -260,11 +250,12 @@ const pullingAway: Lesson = {
       seconds: 4,
       view: { schematic: true, focus: 'clutchBasket', highlight: CLUTCH },
       text: 'The lever comes out slowly while the throttle opens a little. The plates start to grip but still slide past each other, which is called slip. Slip lets the fast engine push the still wheel without being dragged to a stop.',
-      // slip first, then the clutch locks, the engine runs throughout and the bike is moving
+      // more than 0.3 s of slip, then the clutch locks, the engine runs throughout and the bike is moving
       outcome: (f, trace) => {
-        const slipping = trace.findIndex((s) => s.clutch.capacity > 0 && !s.clutch.locked && s.clutch.slip > 20);
+        const slips = (s: SimState) => s.clutch.capacity > 0 && !s.clutch.locked && s.clutch.slip > 20;
+        const slipping = trace.findIndex(slips);
         const lockedAfter = slipping >= 0 && trace.slice(slipping).some((s) => s.clutch.locked);
-        return slipping >= 0 && lockedAfter && trace.every((s) => s.engine.running)
+        return slipping >= 0 && secondsWhere(trace, slips) > 0.3 && lockedAfter && trace.every((s) => s.engine.running)
           && f.clutch.locked && f.lockedGear === 1 && f.roadSpeed > 3;
       },
     },
@@ -282,7 +273,7 @@ const upThroughGears: Lesson = {
   id: 'up-through-the-gears',
   number: 5,
   title: 'Up through the gears',
-  summary: 'Three upshifts from second to fifth, showing that the dogs, not the gears, choose which pair drives.',
+  summary: 'Three gear changes from second to fifth, showing that the dogs, not the gears, choose which pair drives.',
   steps: [
     {
       id: 'second',
@@ -336,28 +327,28 @@ const clutchless: Lesson = {
       id: 'refused',
       title: 'Pedal up, no shift',
       start: { gear: 2, rpm: 8000 },
-      script: keyframes({ throttle: [[0, 1]], pedal: heldUp(1.0) }),
-      seconds: 1.4,
+      script: keyframes({ throttle: [[0, 1]], pedal: [[0, 0], [0.3, 0], [0.36, 1]] }),
+      seconds: 1.2,
       timeScale: 0.25,
       view: { xray: true, focus: 'shiftDrum', highlight: ['shiftDrum', 'forkB', 'gear6out'] },
-      text: 'Pushing the pedal up tries to slide the dogs out, but they are pinched under load and friction holds them. The shift drum that moves them turns a little and stops. When the pedal is let go, it springs back to second.',
-      // second gear throughout half a second of held pedal; the drum stalls short and returns
+      text: 'Pushing the pedal up tries to slide the dogs out, but they are pinched under load and friction holds them. The shift drum that moves them turns a little and stops well short of third.',
+      // second gear throughout more than half a second of held pedal; the drum stalls short of third
+      // and is still held there, pedal up, when the next step takes over
       outcome: (f, trace) =>
         trace.every((s) => s.lockedGear === 2)
         && secondsWhere(trace, (s) => s.pedal.travel > 0.9) > 0.5
         && Math.max(...trace.map((s) => s.drum.angle)) < deg(80)
-        && Math.max(...trace.map((s) => s.drum.angle)) > deg(65)
-        && f.drum.detent === 2,
+        && f.drum.angle > deg(65)
+        && f.pedal.travel > 0.9,
     },
     {
       id: 'dip',
       title: 'Ease off for an instant',
-      start: { gear: 2, rpm: 8000 },
       script: keyframes({
-        throttle: [[0, 1], [0.8, 1], [0.82, 0.1], [0.95, 0.1], [0.97, 1]],
-        pedal: heldUp(1.2),
+        throttle: [[0, 1], [0.3, 1], [0.32, 0.1], [0.45, 0.1], [0.47, 1]],
+        pedal: [[0, 1], [0.7, 1], [0.76, 0]],
       }),
-      seconds: 1.6,
+      seconds: 1,
       timeScale: 0.25,
       view: { xray: true, focus: 'shiftDrum', highlight: ['shiftDrum', 'forkB', 'gear6out', 'gear5out'] },
       text: 'With the pedal still held up, the throttle closes for a moment. The push on the dogs drops, friction lets go and they slide out, and third gear drops in a moment later. This is a clutchless upshift, a change up a gear without the clutch.',
@@ -368,7 +359,7 @@ const clutchless: Lesson = {
         const loaded = trace.slice(0, dip);
         const third = trace.findIndex((s) => s.lockedGear === 3);
         return loaded.every((s) => s.lockedGear === 2)
-          && secondsWhere(loaded, (s) => s.pedal.travel > 0.9) > 0.3
+          && secondsWhere(loaded, (s) => s.pedal.travel > 0.9) > 0.2
           && third > dip && trace[third].t - trace[dip].t < 0.3
           && f.lockedGear === 3;
       },
@@ -394,7 +385,7 @@ const missedShift: Lesson = {
       title: 'Coasting in second',
       start: { gear: 2, rpm: 5000 },
       view: { schematic: true, focus: 'shiftDrum', highlight: DRUM_AND_FORKS },
-      text: 'The bike is coasting in second gear. The pedal turns the shift drum, which slides gears with stubby locking teeth called dogs. Each stroke must turn the drum a full step for the next gear to lock.',
+      text: 'The bike is coasting in second gear. The pedal turns the shift drum, which slides gears with stubby locking teeth called dogs. A sprung roller holds the drum in a notch at each gear, and between two notches is a hump it must be pushed over.',
     },
     {
       id: 'weak',
@@ -404,7 +395,7 @@ const missedShift: Lesson = {
       seconds: 1.5,
       timeScale: 0.25,
       view: { schematic: true, focus: 'shiftDrum', highlight: DRUM_AND_FORKS },
-      text: 'This stroke is too short. It pulls the dogs out of second but leaves the drum balanced on the hump between the second and third notches, so no dogs are engaged. This is a false neutral: nothing drives the wheel.',
+      text: 'This stroke is too short. It pulls the dogs out of second but leaves the drum balanced on top of the hump between the second and third notches, so no dogs are engaged. This is a false neutral: nothing drives the wheel.',
       // started in second; ends with no gear locked and the drum resting between detents
       outcome: (f, trace) =>
         trace[0].lockedGear === 2
@@ -440,7 +431,7 @@ const drumByHand: Lesson = {
       start: { engineOff: true },
       ignition: false,
       view: { explode: true, schematic: true, focus: 'shiftDrum', highlight: DRUM_AND_FORKS },
-      text: 'The engine is off and the gearbox is pulled apart so you can see inside. The shift drum is a cylinder with three grooves around it, and each groove steers one fork.',
+      text: 'The engine is off and the gearbox is pulled apart so you can see inside. The shift drum has three grooves, each steering one fork, an arm that slides a gear along its shaft. A sprung roller holds the drum in a notch at each gear.',
       tryIt: 'Drag the shift drum slowly and watch which fork moves.',
     },
     {
@@ -448,7 +439,7 @@ const drumByHand: Lesson = {
       title: 'One groove, one fork',
       ignition: false,
       view: { explode: true, schematic: true, focus: 'shiftDrum', highlight: [...DRUM_AND_FORKS, ...SLIDERS] },
-      text: 'Most of each groove runs straight around, so its fork stays put. Where a groove bends, its fork slides a gear until that gear’s dogs, stubby locking teeth, lock a pair. At each gear position only one groove is bent.',
+      text: 'Most of each groove runs straight around, so its fork stays put. Where a groove bends, its fork slides a gear until that gear’s dogs, stubby locking teeth, lock a pair. At each gear position only one fork is pushed off center.',
       tryIt: 'Turn the drum from end to end and watch it select each gear in turn.',
     },
     {
@@ -494,13 +485,13 @@ const stalling: Lesson = {
       seconds: 1.5,
       timeScale: 0.25,
       view: { focus: 'crank', highlight: [...CLUTCH, 'crank'] },
-      text: 'The lever snaps out with the throttle closed. The plates grip at once and try to bring the still bike up to engine speed, which takes far more force than an idling engine has. It slows until it can no longer run and stops: a stall.',
+      text: 'The lever snaps out with the throttle closed. The plates grip at once and try to bring the still bike up to the speed the engine is turning, which takes far more force than an idling engine has. It slows until it can no longer run and stops: a stall.',
       outcome: (f, trace) => trace[0].engine.running && !f.engine.running && f.engine.omega === 0 && f.lockedGear === 1,
     },
     {
       id: 'how-to-restart',
       title: 'How to restart',
-      text: 'To start again, pull the lever in first so the engine is free of the wheel. Then press the starter, an electric motor that spins the engine until it fires.',
+      text: 'To start again, first pull the lever in so the engine is free of the wheel. Then press the starter, an electric motor that spins the engine until it fires.',
     },
     {
       id: 'restart',

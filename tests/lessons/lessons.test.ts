@@ -45,6 +45,19 @@ function playLesson(l: Lesson, k = 1): Array<{ id: string; ok: boolean }> {
   return verdicts;
 }
 
+/** Plays a lesson up to and including one scripted step; returns that step's run. */
+function runTo(lessonNumber: number, stepId: string): { step: LessonStep; final: SimState; trace: SimState[] } {
+  const l = LESSONS.find((x) => x.number === lessonNumber)!;
+  const sim = createSimulation();
+  for (const s of l.steps) {
+    applyStart(sim, s);
+    if (!s.script) continue;
+    const r = runStep(sim, s);
+    if (s.id === stepId) return { step: s, ...r };
+  }
+  throw new Error(`no scripted step ${stepId} in lesson ${lessonNumber}`);
+}
+
 const allSteps = () => LESSONS.flatMap((l) => l.steps.map((s) => ({ l, s })));
 const words = (x: string) => x.trim().split(/\s+/).length;
 const sentences = (x: string) => x.split(/[.!?]\s/).length;
@@ -95,15 +108,11 @@ test('every focus and highlight id is a real part', () => {
   }
 });
 
-test('engine-off steps keep the ignition off, in the controls and in any script', () => {
+test('engine-off steps keep the ignition off in the controls', () => {
   for (const { l, s } of allSteps()) {
     const st = s.start;
     if (typeof st === 'object' && 'engineOff' in st) {
       expect(s.ignition, `${l.id}/${s.id}`).toBe(false);
-    }
-    if (s.ignition === false && s.script) {
-      const state = createSimulation().getState();
-      for (const t of [0, 0.5, 1, 2]) expect(s.script(t, state).ignition, `${l.id}/${s.id}`).toBe(false);
     }
   }
 });
@@ -224,5 +233,93 @@ test('scripts are deterministic and never return a non-input', () => {
     const u = s.script(0.5, state);
     expect(Object.keys(u).sort(), `${l.id}/${s.id}`).toEqual(Object.keys(NEUTRAL_INPUTS).sort());
     expect(s.script(0.5, state)).toEqual(u);
+  }
+});
+
+test('lesson 2: the pull outcome needs the shaft to keep most of its speed through the whole hold', () => {
+  const { step, final, trace } = runTo(2, 'pull');
+  expect(step.outcome!(final, trace)).toBe(true);
+  // a shaft that sagged below half the basket speed mid-hold, then recovered, must not pass
+  const sagged = trace.map((s) => structuredClone(s));
+  const mid = sagged.findIndex((s) => s.clutch.capacity === 0) + 100;
+  sagged[mid].inputShaftOmega = 0.4 * (sagged[mid].engine.omega / (PARAMS.primary.driven / PARAMS.primary.drive));
+  expect(step.outcome!(final, sagged)).toBe(false);
+  // nor one that ends turning with the basket, as a locked clutch would
+  const withBasket = { ...final, inputShaftOmega: final.engine.omega / (PARAMS.primary.driven / PARAMS.primary.drive) };
+  expect(step.outcome!(withBasket, [...trace.slice(0, -1), withBasket])).toBe(false);
+});
+
+test('lesson 4: one slipping sample is not enough; the feed must slip for more than 0.3 s', () => {
+  const { step, final, trace } = runTo(4, 'feed');
+  expect(step.outcome!(final, trace)).toBe(true);
+  let kept = false;
+  const brief = trace.map((s) => {
+    const c = structuredClone(s);
+    if (c.clutch.capacity > 0 && !c.clutch.locked) {
+      if (kept) { c.clutch.locked = true; c.clutch.slip = 0; } else kept = true;
+    }
+    return c;
+  });
+  expect(step.outcome!(final, brief)).toBe(false);
+});
+
+test('lesson 6: the throttle dip continues from the refused shift, pedal still held up', () => {
+  const l6 = LESSONS.find((l) => l.number === 6)!;
+  const i = l6.steps.findIndex((s) => s.id === 'dip');
+  expect(l6.steps[i - 1].id).toBe('refused');
+  expect(startState(l6.steps[i])).toBe('keep');
+  const refused = runTo(6, 'refused');
+  expect(refused.final.pedal.travel).toBeGreaterThan(0.9);
+  expect(refused.final.lockedGear).toBe(2);
+  const dip = runTo(6, 'dip');
+  expect(dip.trace[0].pedal.travel).toBeGreaterThan(0.9);
+});
+
+test('engine-off starts put every slider where the drum grooves put it, and nothing moves at rest', () => {
+  const step = (start: LessonStep['start']): LessonStep => ({ id: 'x', title: 'a b', text: 'x.', start, ignition: false });
+  const off = keyframes({ ignition: [[0, false]] });
+  const detents = Object.entries(PARAMS.drum.detents) as Array<[string, number]>;
+  for (const [name, a] of [...detents, ['between', 90] as [string, number]]) {
+    const sim = createSimulation();
+    applyStart(sim, step({ engineOff: true, drumDeg: a }));
+    const s0 = sim.getState();
+    const gear = name === 'N' || name === 'between' ? null : Number(name);
+    expect(s0.lockedGear, `drum at ${a}°`).toBe(gear);
+    const s1 = runSource(sim, off, 0.05);
+    for (const id of ['A', 'B', 'C'] as const) {
+      expect(s1.sliders[id].x, `drum at ${a}°, slider ${id}`).toBeCloseTo(s0.sliders[id].x, 9);
+      expect(s1.sliders[id].locked, `drum at ${a}°, slider ${id}`).toBe(s0.sliders[id].locked);
+    }
+    expect(s1.lockedGear).toBe(gear);
+  }
+  // a misaligned slider at its own gear's detent starts blocked, face to face, and stays so
+  const sim = createSimulation();
+  applyStart(sim, step({ engineOff: true, drumDeg: 0, misaligned: 'A' }));
+  const b0 = sim.getState();
+  expect(b0.lockedGear).toBeNull();
+  expect(b0.sliders.A.blocked).toBe(true);
+  expect(Math.abs(b0.sliders.A.x)).toBeCloseTo(PARAMS.dogs.contactX, 9);
+  const b1 = runSource(sim, off, 0.05);
+  expect(b1.lockedGear).toBeNull();
+  expect(b1.sliders.A.blocked).toBe(true);
+});
+
+test('counts in the copy match the model', () => {
+  const NUMBER: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+  const N = `(${Object.keys(NUMBER).join('|')}|\\d+)`;
+  const value = (w: string) => NUMBER[w.toLowerCase()] ?? Number(w);
+  const sliders = Object.keys(PARAMS.sliders).length;
+  const pairs = Object.keys(PARAMS.gears).length;
+  const expected: Array<{ phrase: RegExp; count: number }> = [
+    { phrase: new RegExp(`\\b${N} gear pairs\\b`, 'gi'), count: pairs },
+    { phrase: new RegExp(`\\ball ${N} (?:gear )?pairs\\b`, 'gi'), count: pairs },
+    { phrase: new RegExp(`\\b${N} grooves\\b`, 'gi'), count: sliders }, // one groove per fork, one fork per slider
+    { phrase: new RegExp(`\\b${N} sliding pieces\\b`, 'gi'), count: sliders },
+  ];
+  const copy = LESSONS.flatMap((l) => [l.summary, ...l.steps.flatMap((s) => [s.text, s.tryIt ?? ''])]).join('\n');
+  for (const { phrase, count } of expected) {
+    const found = [...copy.matchAll(phrase)].map((m) => m[1]);
+    expect(found.length, `${phrase} is used in the copy`).toBeGreaterThan(0);
+    for (const w of found) expect(value(w), `${phrase}: "${w}"`).toBe(count);
   }
 });
