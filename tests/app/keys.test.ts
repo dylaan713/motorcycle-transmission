@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { shouldHandleKey, type KeyTarget } from '../../src/app/keys';
+import { shouldHandleCameraKey, shouldHandleKey, type KeyTarget } from '../../src/app/keys';
+import { CAMERA_KEYS, KEYMAP } from '../../src/app/controls';
 
 const key = (code: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean }> = {}) =>
   ({ code, metaKey: false, ctrlKey: false, altKey: false, ...mods });
@@ -39,5 +40,26 @@ describe('shouldHandleKey', () => {
     expect(shouldHandleKey(key('ArrowUp'), target({ inPanel: true }))).toBe(false);
     expect(shouldHandleKey(key('ArrowDown'), target({ inPanel: true }))).toBe(false);
     expect(shouldHandleKey(key('KeyW'), target({ inPanel: true }))).toBe(true);
+  });
+});
+
+describe('shouldHandleCameraKey', () => {
+  test('Q, E, Z, X and 0 move the camera; the deck keys do not', () => {
+    for (const code of ['KeyQ', 'KeyE', 'KeyZ', 'KeyX', 'Digit0']) expect(shouldHandleCameraKey(key(code), target())).toBe(true);
+    for (const code of ['ArrowUp', 'KeyW', 'KeyC', 'Enter']) expect(shouldHandleCameraKey(key(code), target())).toBe(false);
+  });
+  test('camera keys are never deck keys, so they cannot take over the ride', () => {
+    for (const code of Object.keys(CAMERA_KEYS)) {
+      expect(Object.hasOwn(KEYMAP, code)).toBe(false);
+      expect(shouldHandleKey(key(code), target())).toBe(false);
+    }
+  });
+  test('ignored with a modifier held or while typing', () => {
+    expect(shouldHandleCameraKey(key('KeyZ', { metaKey: true }), target())).toBe(false);
+    expect(shouldHandleCameraKey(key('KeyX', { ctrlKey: true }), target())).toBe(false);
+    expect(shouldHandleCameraKey(key('KeyQ', { altKey: true }), target())).toBe(false);
+    for (const tag of ['INPUT', 'TEXTAREA', 'SELECT']) expect(shouldHandleCameraKey(key('KeyE'), target({ tag }))).toBe(false);
+    expect(shouldHandleCameraKey(key('Digit0'), target({ editable: true }))).toBe(false);
+    expect(shouldHandleCameraKey(key('KeyQ'), target({ tag: 'BUTTON' }))).toBe(true);
   });
 });

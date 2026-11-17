@@ -46,9 +46,14 @@ export function withEdges(geometry: BufferGeometry, tone: Tone, thresholdDeg = D
 
 const isLambert = (m: Material): m is MeshLambertMaterial => (m as MeshLambertMaterial).isMeshLambertMaterial === true;
 
+/** Value of the signal fill at the smallest torque shown; it reaches the full signal at 1. */
+export const SIGNAL_FLOOR = 0.62;
+
 /**
- * Show how much torque a part carries, 0..1: every mesh under `group` lerps from its tone toward
- * the signal colour and glows with signal × 0.35 × amount. The amount is kept in userData.torque.
+ * Show how much torque a part carries, 0..1: a part carrying any torque turns the signal colour,
+ * darker at light torque and full signal at 1, and glows with signal × 0.35 × amount; at 0 it
+ * returns to its tone. The hue never mixes with the steel's blue-grey, which would read as pink.
+ * The amount is kept in userData.torque.
  */
 export function setTorque(group: Object3D, amount: number): void {
   const a = Math.min(1, Math.max(0, Number.isFinite(amount) ? amount : 0));
@@ -61,7 +66,8 @@ export function setTorque(group: Object3D, amount: number): void {
       if (!isLambert(m)) continue;
       const tone = m.userData.tone as Tone | undefined;
       if (tone === undefined) continue;
-      m.color.set(COLORS[tone]).lerp(SIGNAL, a);
+      if (a > 0) m.color.copy(SIGNAL).multiplyScalar(SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) * a);
+      else m.color.set(COLORS[tone]);
       m.emissive.copy(SIGNAL).multiplyScalar(GLOW * a);
     }
   });

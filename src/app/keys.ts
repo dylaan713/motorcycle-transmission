@@ -1,4 +1,4 @@
-import { KEYMAP } from './controls';
+import { CAMERA_KEYS, KEYMAP } from './controls';
 
 /** What the key filter needs to know about the element a key event is aimed at. */
 export interface KeyTarget {
@@ -23,14 +23,23 @@ const ACTIVATED_BY_ENTER_ROLES = new Set([
  * Enter activates (a button, link, tab...); an arrow key is scrolling the information panel.
  */
 export function shouldHandleKey(e: KeyPress, target: KeyTarget | null): boolean {
-  if (!Object.hasOwn(KEYMAP, e.code)) return false;
-  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  if (!Object.hasOwn(KEYMAP, e.code) || !free(e, target)) return false;
   if (target === null) return true;
-  if (target.editable || FORM_FIELDS.has(target.tag)) return false;
   if (e.code === 'Enter' &&
     (ACTIVATED_BY_ENTER_TAGS.has(target.tag) || ACTIVATED_BY_ENTER_ROLES.has(target.role ?? ''))) return false;
   if ((e.code === 'ArrowUp' || e.code === 'ArrowDown') && target.inPanel) return false;
   return true;
+}
+
+/** No browser shortcut modifier is down and the visitor is not typing in a field. */
+function free(e: KeyPress, target: KeyTarget | null): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  return target === null || !(target.editable || FORM_FIELDS.has(target.tag));
+}
+
+/** Whether a keydown moves the 3D camera (Q, E, Z, X, 0), on the same terms as the deck keys. */
+export function shouldHandleCameraKey(e: KeyPress, target: KeyTarget | null): boolean {
+  return Object.hasOwn(CAMERA_KEYS, e.code) && free(e, target);
 }
 
 /** Describes a DOM event target for shouldHandleKey; touches the DOM only when called. */

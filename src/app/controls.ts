@@ -17,6 +17,16 @@ export const KEYMAP: Record<string, Action> = {
   KeyR: 'reset',
 };
 
+export type CameraAction = 'orbitLeft' | 'orbitRight' | 'zoomIn' | 'zoomOut' | 'resetCamera';
+/** Keys that move the 3D camera. They are not deck keys: they never take over the ride. */
+export const CAMERA_KEYS: Record<string, CameraAction> = {
+  KeyQ: 'orbitLeft',
+  KeyE: 'orbitRight',
+  KeyZ: 'zoomIn',
+  KeyX: 'zoomOut',
+  Digit0: 'resetCamera',
+};
+
 export interface Controls {
   setKey(code: string, down: boolean): boolean; // returns true if the key is one of ours
   setPointer(channel: Analog, value: number | null): void; // null releases

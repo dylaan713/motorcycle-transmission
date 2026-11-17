@@ -1,4 +1,4 @@
-import type { View } from '../app/view';
+import type { View3d } from './view';
 
 /**
  * The app's only door into the 3D chunk. This file stays in the initial bundle, so it must never
@@ -20,10 +20,10 @@ export function webglAvailable(): boolean {
 }
 
 /**
- * Fetches the 3D chunk and builds its view in `container`. Progress counts real steps: one for
+ * Fetches the 3D chunk, builds the assembly and its view in `container`. Progress counts real steps: one for
  * the chunk, then each step the chunk reports while it builds.
  */
-export async function load3d(container: HTMLElement, onProgress: Progress): Promise<View> {
+export async function load3d(container: HTMLElement, onProgress: Progress): Promise<View3d> {
   onProgress(0, 1, 'Loading 3D view');
   const mod = await import('./index');
   return mod.create(container, (done, total, label) => onProgress(1 + done, 1 + total, label));

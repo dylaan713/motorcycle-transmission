@@ -2,9 +2,9 @@ import '@fontsource-variable/archivo/wdth.css';
 import '@fontsource-variable/jetbrains-mono/index.css';
 import './ui/styles.css';
 import { applyTokens } from './ui/tokens';
-import { createControls, KEYMAP } from './app/controls';
+import { CAMERA_KEYS, createControls, KEYMAP } from './app/controls';
 import { createDriver } from './app/driver';
-import { describeTarget, shouldHandleKey } from './app/keys';
+import { describeTarget, shouldHandleCameraKey, shouldHandleKey } from './app/keys';
 import { createLoop, startAnimation } from './app/loop';
 import { mountDeck } from './ui/deck';
 import { createSimulation } from './sim/simulation';
@@ -18,6 +18,9 @@ import { mountLoader } from './ui/loader';
 import { el } from './ui/dom';
 import { createStageHost } from './app/stageHost';
 import { load3d, webglAvailable } from './view3d/load';
+import type { View3d } from './view3d/view';
+import { mountCallouts, type Callouts, type Rect } from './ui/callouts';
+import { mountToolbar, ORBIT_STEP, ZOOM_STEP, type Toolbar } from './ui/toolbar';
 
 applyTokens(document.documentElement);
 
@@ -41,8 +44,24 @@ stage.prepend(mainSlot, insetSlot);
 const host = createStageHost(mainSlot, insetSlot);
 const wide = matchMedia('(min-width: 900px)');
 host.setInset(wide.matches); // phones get the whole stage for one view
-wide.addEventListener('change', () => host.setInset(wide.matches));
-insetSlot.addEventListener('click', () => host.swap());
+// set once the 3D view has arrived
+let view3d: View3d | null = null;
+let toolbar: Toolbar | null = null;
+let callouts: Callouts | null = null;
+let labelsOn = wide.matches; // labels default on at 900px and wider
+const syncChrome = (): void => {
+  toolbar?.sync({ view: host.main ?? 'schematic', inset: host.inset !== null });
+  callouts?.setVisible(labelsOn && host.main === '3d');
+  callouts?.invalidate();
+  stage.toggleAttribute('data-inset', host.inset !== null);
+};
+wide.addEventListener('change', () => {
+  host.setInset(wide.matches);
+  labelsOn = wide.matches;
+  toolbar?.sync({ labels: labelsOn });
+  syncChrome();
+});
+insetSlot.addEventListener('click', () => { host.swap(); syncChrome(); });
 
 const schematicBox = el('div', 'view');
 const canvas = el('canvas', 'view-canvas', {
@@ -83,6 +102,7 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
   readouts.sync(reading, state);
   deck.sync(state, loop.lastInputs);
   host.render(state, torquePath(state));
+  callouts?.sync();
 });
 
 // hover highlights a part, a click (not a drag) selects it
@@ -94,6 +114,7 @@ const local = (e: PointerEvent) => {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 };
 mainSlot.addEventListener('pointermove', (e) => {
+  if (e.buttons !== 0) return; // dragging the camera: no picking on the way
   const { x, y } = local(e);
   const id = host.pick(x, y);
   hovering = id !== null;
@@ -128,6 +149,7 @@ if (webglAvailable()) {
   load3d(box, loader.progress).then((v3) => {
     host.register('3d', v3, box);
     loader.done();
+    arrive3d(v3);
   }, (err: unknown) => {
     box.remove();
     loader.remove();
@@ -137,11 +159,59 @@ if (webglAvailable()) {
   fallBack('WebGL 2 is not available');
 }
 
+/** The toolbar, the callouts and context loss, once the 3D view is on the stage. */
+function arrive3d(v3: View3d): void {
+  view3d = v3;
+  const tools = el('div', 'stage-tools');
+  const layer = el('div', 'callout-layer');
+  stage.insertBefore(layer, insetSlot); // under the inset, over the main view
+  stage.append(tools);
+  stage.toggleAttribute('data-tools', true); // the main view makes room for it
+  toolbar = mountToolbar(tools, {
+    onView: (v) => { host.setMain(v); syncChrome(); },
+    onInset: (on) => { host.setInset(on); syncChrome(); },
+    onTorqueFlow: (on) => v3.setTorqueFlow(on),
+    onLabels: (on) => { labelsOn = on; syncChrome(); },
+    onResetCamera: () => v3.resetCamera(),
+    onOrbit: (d) => v3.orbit(d, 0),
+    onZoom: (f) => v3.zoom(f),
+  }, { view: host.main ?? '3d', inset: host.inset !== null, labels: labelsOn });
+  callouts = mountCallouts(layer, v3);
+  // cards keep clear of the status line and loader along the top, the toolbar and the inset
+  const TOP_BAND = 48;
+  callouts.setAvoid(() => {
+    const origin = layer.getBoundingClientRect();
+    const rel = (r: DOMRect): Rect => ({ x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height });
+    const out: Rect[] = [{ x: 0, y: 0, w: origin.width, h: TOP_BAND }, rel(tools.getBoundingClientRect())];
+    if (!insetSlot.hidden) out.push(rel(insetSlot.getBoundingClientRect()));
+    return out;
+  });
+  v3.onContext((lost) => {
+    if (lost) { host.setMain('schematic'); status.notice('3D view paused; showing the schematic.'); }
+    else { host.setMain('3d'); status.notice(''); }
+    syncChrome();
+  });
+  syncChrome();
+}
+
 // taking over starts from what the bike was doing, so each control ramps back from there
 driver.onModeChange((mode) => { if (mode === 'visitor') controls.seed(loop.lastInputs); });
 
+const cameraKey = (e: KeyboardEvent): void => {
+  if (view3d === null || host.main !== '3d') return;
+  e.preventDefault();
+  const action = CAMERA_KEYS[e.code];
+  if (action === 'orbitLeft') view3d.orbit(ORBIT_STEP / 3, 0); // repeats while held
+  else if (action === 'orbitRight') view3d.orbit(-ORBIT_STEP / 3, 0);
+  else if (action === 'zoomIn') view3d.zoom(1 / Math.sqrt(ZOOM_STEP));
+  else if (action === 'zoomOut') view3d.zoom(Math.sqrt(ZOOM_STEP));
+  else if (!e.repeat) view3d.resetCamera();
+};
+
 window.addEventListener('keydown', (e) => {
-  if (!shouldHandleKey(e, describeTarget(e.target))) return;
+  const target = describeTarget(e.target);
+  if (shouldHandleCameraKey(e, target)) { cameraKey(e); return; } // the camera never takes over the ride
+  if (!shouldHandleKey(e, target)) return;
   e.preventDefault(); // repeats too, so a held arrow never scrolls the page
   if (e.repeat) return;
   driver.takeOver();

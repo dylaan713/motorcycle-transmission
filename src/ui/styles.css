@@ -23,6 +23,8 @@
   --deck-h: 132px;
   --panel-w: 360px;
   --gutter: 24px;
+  --inset: 28%; /* inset width and height, as a share of the stage */
+  --tools-h: 0px; /* band under the main view kept for the toolbar once it is mounted */
   color-scheme: dark;
 }
 
@@ -88,11 +90,12 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 /* two slots a view can sit in; the host moves each view's container between them */
 .stage-main {
   position: absolute; left: var(--gutter); top: var(--gutter);
-  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter));
+  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter) - var(--tools-h));
 }
+#stage[data-tools] { --tools-h: 58px; }
 .stage-inset {
   position: absolute; z-index: 1; left: var(--gutter); bottom: var(--gutter);
-  width: calc(34% - var(--gutter)); height: calc(34% - var(--gutter));
+  width: calc(var(--inset) - var(--gutter)); height: calc(var(--inset) - var(--gutter));
   padding: 0; overflow: hidden; cursor: pointer;
   background: var(--ground); border: 1px solid var(--third); border-radius: 4px;
 }
@@ -101,6 +104,55 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 .stage-inset .view { pointer-events: none; } /* the whole inset is one button */
 .view { position: absolute; inset: 0; }
 .view-canvas { display: block; width: 100%; height: 100%; }
+
+/* ---- stage toolbar: bottom centre, or centred in the room right of the inset ---- */
+.stage-tools {
+  position: absolute; z-index: 2; left: var(--gutter); right: var(--gutter); bottom: 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none;
+}
+#stage[data-inset] .stage-tools { left: calc(var(--inset) + var(--s3)); }
+.toolbar {
+  display: flex; align-items: center; gap: 2px; padding: 2px; pointer-events: auto;
+  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 8px;
+}
+.toolbar-sep { width: 1px; height: 24px; margin: 0 var(--s1); background: var(--steel-2); }
+.tool {
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+  color: var(--third); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+}
+.tool svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tool:hover { color: var(--ink); border-color: var(--steel-2); }
+.tool[aria-pressed="true"] { color: var(--ink); background: var(--steel-1); border-color: var(--steel-3); }
+.tool[aria-disabled="true"] { color: var(--steel-3); cursor: default; }
+.tool[aria-disabled="true"]:hover { border-color: transparent; }
+.tool:focus-visible { outline-offset: -2px; }
+.toolbar-hint { margin: 0; font-size: 0.6875rem; line-height: 16px; color: var(--third); white-space: nowrap; }
+.toolbar-hint[hidden] { display: none; }
+
+/* ---- callouts: cards on leader lines over the 3D view, sitting exactly on the main slot ---- */
+.callout-layer {
+  position: absolute; z-index: 1; left: var(--gutter); top: var(--gutter);
+  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter) - var(--tools-h));
+  pointer-events: none; transition: opacity 200ms ease-out;
+}
+.callout-layer[hidden] { display: none; }
+.callout-layer[data-off] { opacity: 0; visibility: hidden; transition: none; }
+.callout-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.callout-lines line { stroke: var(--third); stroke-width: 1; }
+.callout-lines circle { fill: var(--ground); stroke: var(--third); stroke-width: 1; }
+/* a leader to an anchor hidden behind another part is dashed, as a hidden line is in a drawing */
+.callout-lines .is-hidden line { stroke-dasharray: 3 3; }
+.callout-lines .is-hidden circle { fill: none; }
+.callout {
+  position: absolute; left: 0; top: 0; width: clamp(176px, 21%, 236px);
+  display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
+  font: inherit; text-align: left; color: var(--ink); cursor: pointer; pointer-events: auto;
+  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
+}
+.callout[hidden] { display: none; }
+.callout:hover { border-color: var(--third); }
+.callout-title { font-size: var(--t-sm); font-weight: 600; line-height: 1.25; }
+.callout-text { font-size: var(--t-xs); line-height: 1.4; color: var(--third); }
 
 /* ---- 3D loader, over the stage; the schematic stays usable underneath ---- */
 .loader {
@@ -155,6 +207,12 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
     position: fixed; left: 0; right: 0; bottom: 0; height: var(--deck-h); z-index: 3;
     padding: var(--s3) var(--gutter);
   }
+}
+
+@media (max-width: 899.98px) {
+  .tool:not([data-essential]), .toolbar-sep, .toolbar-hint { display: none; }
+  .stage-tools { bottom: var(--s2); }
+  #stage[data-tools] { --tools-h: 46px; }
 }
 
 /* ---- control deck ---- */
