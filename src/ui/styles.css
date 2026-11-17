@@ -85,9 +85,38 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   grid-template-areas: 'stage panel' 'deck panel';
 }
 #stage { grid-area: stage; min-width: 0; min-height: 0; position: relative; padding: var(--gutter); }
-.stage-canvas {
-  position: absolute; left: var(--gutter); top: var(--gutter); display: block;
+/* two slots a view can sit in; the host moves each view's container between them */
+.stage-main {
+  position: absolute; left: var(--gutter); top: var(--gutter);
   width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter));
+}
+.stage-inset {
+  position: absolute; z-index: 1; left: var(--gutter); bottom: var(--gutter);
+  width: calc(34% - var(--gutter)); height: calc(34% - var(--gutter));
+  padding: 0; overflow: hidden; cursor: pointer;
+  background: var(--ground); border: 1px solid var(--third); border-radius: 4px;
+}
+.stage-inset[hidden] { display: none; }
+.stage-inset:hover { border-color: var(--ink); }
+.stage-inset .view { pointer-events: none; } /* the whole inset is one button */
+.view { position: absolute; inset: 0; }
+.view-canvas { display: block; width: 100%; height: 100%; }
+
+/* ---- 3D loader, over the stage; the schematic stays usable underneath ---- */
+.loader {
+  position: absolute; z-index: 2; top: var(--s3); right: var(--gutter); width: 220px;
+  padding: var(--s2) var(--s3); font-size: var(--t-xs); color: var(--ink); pointer-events: none;
+  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
+  transition: opacity 300ms ease-out;
+}
+.loader[data-done] { opacity: 0; }
+.loader-line { display: flex; justify-content: space-between; gap: var(--s3); }
+.loader-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loader-pct { color: var(--third); }
+.loader-bar { height: 2px; margin-top: var(--s2); background: var(--steel-1); overflow: hidden; }
+.loader-fill {
+  height: 100%; background: var(--ink); transform-origin: left; transform: scaleX(var(--v, 0));
+  transition: transform 200ms ease-out;
 }
 #deck:empty { display: none; }
 #deck {

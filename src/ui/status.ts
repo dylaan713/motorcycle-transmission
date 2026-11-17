@@ -41,15 +41,28 @@ const MESSAGES = {
   touch: { stalled: 'Stalled. Pull the clutch and press Start to restart.', off: 'Ignition off. Tap Ignition to switch it on.' },
 } as const;
 
-/** A polite live line for status changes (a stall, the ignition); never the changing numbers. */
-export function mountStatus(host: HTMLElement): { sync(r: Reading): void } {
+/** How long a one-off notice stays up, in ms. */
+const NOTICE_MS = 8000;
+
+/**
+ * A polite live line for status changes (a stall, the ignition); never the changing numbers.
+ * `notice` shows a one-off line for a while; a stall or ignition message takes precedence.
+ */
+export function mountStatus(host: HTMLElement): { sync(r: Reading): void; notice(text: string): void } {
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
   const touch = matchMedia('(max-width: 899.98px), (pointer: coarse)');
+  let note = '';
+  let timer = 0;
   return {
     sync(r) {
       const m = MESSAGES[touch.matches ? 'touch' : 'keys'];
-      setText(host, r.engine === 'stalled' ? m.stalled : r.engine === 'off' ? m.off : '');
+      setText(host, r.engine === 'stalled' ? m.stalled : r.engine === 'off' ? m.off : note);
+    },
+    notice(text) {
+      note = text;
+      clearTimeout(timer);
+      timer = window.setTimeout(() => { note = ''; }, NOTICE_MS);
     },
   };
 }
