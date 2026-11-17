@@ -17,6 +17,13 @@ export interface ToolbarHooks {
 export interface Toolbar {
   /** Reflect state changed elsewhere (a click on the inset, a narrow screen, context loss). */
   sync(s: { view?: ViewName; inset?: boolean; labels?: boolean; torqueFlow?: boolean }): void;
+  /**
+   * Whether the 3D view can be shown (false while its WebGL context is lost): the "3D view" button
+   * and the inset toggle stay focusable but are aria-disabled and do nothing until it can.
+   */
+  setAvailable3d(on: boolean): void;
+  /** Removes the toolbar and its listeners. */
+  dispose(): void;
 }
 
 /** One toolbar press: an orbit of 15° and a zoom of 1.25×. */
@@ -46,36 +53,59 @@ const icon = (name: keyof typeof ICONS): SVGSVGElement => {
   return svg;
 };
 
-interface Spec {
+export interface ToolSpec {
   id: string; name: string; tip: string; icon: keyof typeof ICONS;
   /** Shown on narrow screens too. */
   essential?: boolean;
   /** Acts on the 3D camera: unavailable while the schematic is the main view. */
   camera?: boolean;
+  /** Needs a working 3D view: unavailable while its context is lost. */
+  needs3d?: boolean;
+  /** The key that does the same, for aria-keyshortcuts. */
+  keys?: string;
   group: number;
 }
 
-const SPECS: Spec[] = [
-  { id: '3d', name: '3D view', tip: '3D view', icon: 'cube', essential: true, group: 0 },
+export const TOOLS: ToolSpec[] = [
+  { id: '3d', name: '3D view', tip: '3D view', icon: 'cube', essential: true, needs3d: true, group: 0 },
   { id: 'schematic', name: 'Schematic', tip: 'Schematic view', icon: 'schematic', essential: true, group: 0 },
-  { id: 'inset', name: 'Inset view', tip: 'Show the other view in a corner', icon: 'inset', group: 1 },
+  { id: 'inset', name: 'Inset view', tip: 'Show the other view in a corner', icon: 'inset', needs3d: true, group: 1 },
   { id: 'torque', name: 'Torque flow', tip: 'Light the parts carrying torque', icon: 'torque', essential: true, group: 1 },
   { id: 'labels', name: 'Labels', tip: 'Labels', icon: 'labels', camera: true, group: 1 },
-  { id: 'orbitLeft', name: 'Orbit left', tip: 'Orbit left (Q)', icon: 'orbitLeft', camera: true, group: 2 },
-  { id: 'orbitRight', name: 'Orbit right', tip: 'Orbit right (E)', icon: 'orbitRight', camera: true, group: 2 },
-  { id: 'zoomOut', name: 'Zoom out', tip: 'Zoom out (X)', icon: 'zoomOut', camera: true, group: 2 },
-  { id: 'zoomIn', name: 'Zoom in', tip: 'Zoom in (Z)', icon: 'zoomIn', camera: true, group: 2 },
-  { id: 'reset', name: 'Reset view', tip: 'Reset view (0)', icon: 'reset', essential: true, camera: true, group: 2 },
+  { id: 'orbitLeft', name: 'Orbit left', tip: 'Orbit left (Q)', icon: 'orbitLeft', camera: true, keys: 'Q', group: 2 },
+  { id: 'orbitRight', name: 'Orbit right', tip: 'Orbit right (E)', icon: 'orbitRight', camera: true, keys: 'E', group: 2 },
+  { id: 'zoomOut', name: 'Zoom out', tip: 'Zoom out (X)', icon: 'zoomOut', camera: true, keys: 'X', group: 2 },
+  { id: 'zoomIn', name: 'Zoom in', tip: 'Zoom in (Z)', icon: 'zoomIn', camera: true, keys: 'Z', group: 2 },
+  { id: 'reset', name: 'Reset view', tip: 'Reset view (0)', icon: 'reset', essential: true, camera: true, keys: '0', group: 2 },
 ];
 
+/** Whether a toolbar button does anything right now. A button that cannot stays focusable, aria-disabled. */
+export function actionable(t: ToolSpec, s: { view: ViewName; available3d: boolean }): boolean {
+  if (t.needs3d && !s.available3d) return false;
+  if (t.camera && s.view !== '3d') return false;
+  return true;
+}
+
+/**
+ * The button an arrow, Home or End key moves focus to, as an index into all the buttons, skipping
+ * those not shown at this width; null for any other key or with a browser modifier held.
+ */
+export function rovingIndex(e: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean }, shown: boolean[], current: number): number | null {
+  const order = shown.flatMap((on, i) => (on ? [i] : []));
+  const at = order.indexOf(current);
+  const next = tabKeyTarget(e, order.length, at < 0 ? 0 : at);
+  return next === null ? null : order[next];
+}
+
 export function mountToolbar(host: HTMLElement, hooks: ToolbarHooks, initial: { view: ViewName; inset: boolean; labels: boolean }): Toolbar {
-  const state = { view: initial.view, inset: initial.inset, labels: initial.labels, torqueFlow: true };
+  const state = { view: initial.view, inset: initial.inset, labels: initial.labels, torqueFlow: true, available3d: true };
   const bar = el('div', 'toolbar', { role: 'toolbar', 'aria-label': 'View', 'aria-orientation': 'horizontal' });
   const buttons = new Map<string, HTMLButtonElement>();
   let group = 0;
-  for (const s of SPECS) {
+  for (const s of TOOLS) {
     if (s.group !== group) { bar.append(el('span', 'toolbar-sep', { 'aria-hidden': 'true' })); group = s.group; }
     const b = el('button', 'tool', { type: 'button', title: s.tip, 'aria-label': s.name, tabindex: '-1', 'data-press': '', 'data-id': s.id });
+    if (s.keys) b.setAttribute('aria-keyshortcuts', s.keys);
     if (s.essential) b.dataset.essential = '';
     b.append(icon(s.icon));
     bar.append(b);
@@ -91,9 +121,9 @@ export function mountToolbar(host: HTMLElement, hooks: ToolbarHooks, initial: { 
     buttons.get('inset')!.setAttribute('aria-pressed', String(state.inset));
     buttons.get('torque')!.setAttribute('aria-pressed', String(state.torqueFlow));
     buttons.get('labels')!.setAttribute('aria-pressed', String(state.labels));
-    for (const s of SPECS) {
+    for (const s of TOOLS) {
       const b = buttons.get(s.id)!;
-      if (s.camera && !is3d) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+      if (actionable(s, state)) b.removeAttribute('aria-disabled'); else b.setAttribute('aria-disabled', 'true');
     }
     hint.hidden = !is3d;
   };
@@ -110,39 +140,53 @@ export function mountToolbar(host: HTMLElement, hooks: ToolbarHooks, initial: { 
     zoomIn: () => hooks.onZoom(1 / ZOOM_STEP),
     reset: () => hooks.onResetCamera(),
   };
-  bar.addEventListener('click', (e) => {
+  const onClick = (e: MouseEvent): void => {
     const b = (e.target as Element).closest<HTMLButtonElement>('.tool');
-    if (!b || b.getAttribute('aria-disabled') === 'true') return;
+    if (!b || !actionable(TOOLS.find((t) => t.id === b.dataset.id)!, state)) return;
     act[b.dataset.id!]();
     focusable(b);
     render();
-  });
+  };
+  bar.addEventListener('click', onClick);
 
   // roving tabindex over the buttons shown at this width
-  const shown = (): HTMLButtonElement[] => [...buttons.values()].filter((b) => b.offsetParent !== null);
-  const focusable = (b: HTMLButtonElement): void => { for (const x of buttons.values()) x.tabIndex = x === b ? 0 : -1; };
+  const all = [...buttons.values()];
+  const focusable = (b: HTMLButtonElement): void => { for (const x of all) x.tabIndex = x === b ? 0 : -1; };
   const settle = (): void => {
-    const list = shown();
+    const list = all.filter((b) => b.offsetParent !== null);
     if (list.length > 0 && !list.some((b) => b.tabIndex === 0)) focusable(list[0]);
   };
-  bar.addEventListener('keydown', (e) => {
-    const list = shown();
-    const i = list.indexOf(document.activeElement as HTMLButtonElement);
+  const onKey = (e: KeyboardEvent): void => {
+    const i = all.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0) return;
-    const next = tabKeyTarget(e, list.length, i);
+    const next = rovingIndex(e, all.map((b) => b.offsetParent !== null), i);
     if (next === null) return;
     e.preventDefault();
-    focusable(list[next]);
-    list[next].focus();
-  });
+    focusable(all[next]);
+    all[next].focus();
+  };
+  bar.addEventListener('keydown', onKey);
   focusable(buttons.get('3d')!);
-  matchMedia('(min-width: 900px)').addEventListener('change', settle);
+  const wide = matchMedia('(min-width: 900px)');
+  wide.addEventListener('change', settle);
   render();
 
   return {
     sync(s) {
       Object.assign(state, Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined)));
       render();
+    },
+    setAvailable3d(on) {
+      if (state.available3d === on) return;
+      state.available3d = on;
+      render();
+    },
+    dispose() {
+      wide.removeEventListener('change', settle);
+      bar.removeEventListener('click', onClick);
+      bar.removeEventListener('keydown', onKey);
+      bar.remove();
+      hint.remove();
     },
   };
 }

@@ -19,12 +19,33 @@ export function webglAvailable(): boolean {
   }
 }
 
+/** Progress inside the chunk, counted after the chunk's own step out of one fixed total. */
+export const afterChunk = (onProgress: Progress): Progress =>
+  (done, total, label) => onProgress(1 + done, 1 + total, label);
+
 /**
- * Fetches the 3D chunk, builds the assembly and its view in `container`. Progress counts real steps: one for
- * the chunk, then each step the chunk reports while it builds.
+ * Progress for building the 3D view: the assembly's `buildSteps` steps (each reported by the
+ * assembly against its own total, rescaled here), then starting the renderer as the last step.
+ * One total throughout, so the bar only climbs, and only the end reads "Ready".
+ */
+export function buildProgress(onProgress: Progress, buildSteps: number): {
+  start(): void; build: Progress; renderer(): void; ready(): void;
+} {
+  const total = buildSteps + 1;
+  return {
+    start: () => onProgress(0, total, 'Building the model'),
+    build: (done, steps, label) => onProgress((done / steps) * buildSteps, total, label),
+    renderer: () => onProgress(buildSteps, total, 'Starting the renderer'),
+    ready: () => onProgress(total, total, 'Ready'),
+  };
+}
+
+/**
+ * Fetches the 3D chunk, builds the assembly and its view in `container`. Progress counts real
+ * steps: one for the chunk, then the assembly's steps, then starting the renderer.
  */
 export async function load3d(container: HTMLElement, onProgress: Progress): Promise<View3d> {
   onProgress(0, 1, 'Loading 3D view');
   const mod = await import('./index');
-  return mod.create(container, (done, total, label) => onProgress(1 + done, 1 + total, label));
+  return mod.create(container, afterChunk(onProgress));
 }

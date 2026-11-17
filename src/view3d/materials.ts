@@ -59,6 +59,25 @@ export const GHOST_FACE_OPACITY = 0.06;
 /** Ghosts draw after every solid part, so their faces never hide the mechanism. */
 const GHOST_RENDER_ORDER = 10;
 
+const TONE_COLORS = Object.fromEntries(
+  (['steel1', 'steel2', 'steel3', 'steel4', 'steel5'] as const).map((t) => [t, new Color(COLORS[t])]),
+) as Record<Tone, Color>;
+const luminance = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; // linear components
+const SIGNAL_LUMINANCE = luminance(SIGNAL);
+
+/**
+ * The fill of a `tone` part carrying `amount` (0..1) of torque, written into `target`. At 0 the
+ * tone; above 0 always the signal's hue, its brightness lerped from the tone's toward the signal's
+ * by `amount`, so it reaches the signal at 1. A plain RGB lerp from the blue-grey steels would pass
+ * through pink and brown; this keeps every lit part on the path recognisably orange.
+ */
+export function torqueColor(target: Color, tone: Tone, amount: number): Color {
+  const base = TONE_COLORS[tone];
+  if (!(amount > 0)) return target.copy(base);
+  const from = luminance(base) / SIGNAL_LUMINANCE;
+  return target.copy(SIGNAL).multiplyScalar(Math.min(1, from + (1 - from) * Math.min(1, amount)));
+}
+
 /**
  * Draw (or stop drawing) everything under `node` as a ghost: edge lines in --third at
  * GHOST_EDGE_OPACITY, faces at GHOST_FACE_OPACITY that write no depth, so a ghost never occludes a
@@ -101,7 +120,7 @@ export function setTorque(group: Object3D, amount: number): void {
       if (!isLambert(m)) continue;
       const tone = m.userData.tone as Tone | undefined;
       if (tone === undefined) continue;
-      m.color.set(COLORS[tone]).lerp(SIGNAL, face);
+      torqueColor(m.color, tone, face);
       m.emissive.copy(SIGNAL).multiplyScalar(GLOW * face);
     }
   });

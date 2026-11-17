@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { CALLOUTS, layoutCallouts, reservedRegions } from '../../src/ui/callouts';
+import { CALLOUTS, layoutCallouts, projectAnchors, projectionBuffer, reservedRegions } from '../../src/ui/callouts';
 
 test('callouts take fixed slots on their side and lines join card to anchor', () => {
   const projected = Object.fromEntries(CALLOUTS.map((c, i) => [c.anchor, { x: 400 + i * 40, y: 200 + i * 30, visible: i !== 2 }]));
@@ -16,6 +16,28 @@ test('callouts take fixed slots on their side and lines join card to anchor', ()
 test('six callouts, none naming a brand, each one sentence or two', () => {
   expect(CALLOUTS.length).toBe(6);
   for (const c of CALLOUTS) expect(c.text.length).toBeLessThanOrEqual(80);
+  const MAKERS = /\b(honda|yamaha|suzuki|kawasaki|ducati|bmw|ktm|triumph|aprilia|harley|davidson|mv agusta|benelli|royal enfield|husqvarna|moto guzzi|indian)\b/i;
+  for (const c of CALLOUTS) expect(`${c.title} ${c.text}`).not.toMatch(MAKERS);
+});
+
+test('cards tab by side, top to bottom: the left column first', () => {
+  const sides = CALLOUTS.map((c) => c.side);
+  expect(sides).toEqual(['left', 'left', 'left', 'right', 'right', 'right']);
+});
+
+test('projecting anchors writes into reused objects (no allocation per frame)', () => {
+  const calls: unknown[] = [];
+  const fake = {
+    anchors: Object.fromEntries(CALLOUTS.map((c, i) => [c.anchor, { i }])),
+    project(world: { i: number }, out: { x: number; y: number; visible: boolean }) { calls.push(out); out.x = world.i * 10; out.y = 5; out.visible = true; return out; },
+  };
+  const into = projectionBuffer();
+  projectAnchors(fake as never, into);
+  const first = CALLOUTS.map((c) => into[c.anchor]);
+  projectAnchors(fake as never, into);
+  CALLOUTS.forEach((c, i) => { expect(into[c.anchor]).toBe(first[i]); });
+  expect(new Set(calls).size).toBe(CALLOUTS.length);
+  expect(into[CALLOUTS[2].anchor].x).toBe(20);
 });
 
 test('slots do not move when the anchors do', () => {

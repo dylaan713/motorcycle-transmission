@@ -92,6 +92,8 @@ const SHAFT_RADIUS: Record<Shaft, number> = { input: DIM.inputShaftRadius, outpu
 const SHAFT_AXIS: Record<Shaft, Axis> = { input: INPUT_AXIS, output: OUTPUT_AXIS };
 const SLIDERS = Object.keys(PARAMS.sliders) as SliderId[];
 const GROUP_LABELS = ['shafts', 'input gears', 'output gears', 'clutch', 'shift mechanism', 'final drive'] as const;
+/** How many progress steps buildAssembly reports. */
+export const BUILD_STEPS = GROUP_LABELS.length;
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 const mid = (r: readonly [number, number]): number => (r[0] + r[1]) / 2;
 const span = (r: readonly [number, number]): number => r[1] - r[0];
@@ -130,7 +132,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   };
   const rig: Rig = {
     gears: [], freeDogs: [], forks: [], frictionPlates: [], steelPlates: [], springs: [], springBuiltLength: 0,
-    chain: chainRig(), detentTable: buildDetentTable(), posedCapacity: Number.NaN,
+    chain: chainRig(), detentTable: new Float64Array(0), posedCapacity: Number.NaN, // the table is built in the shift step
   };
 
   // ---- shafts and crank ----
@@ -238,6 +240,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
 
   // ---- shift mechanism ----
   const shift = (): void => {
+    rig.detentTable = buildDetentTable(); // ~200 ms, so inside a reported step, after a yield
     const drum = partNode('shiftDrum', 0, DRUM_AXIS);
     solid(drum, shiftDrum(DRUM_LENGTH, FORK_X, FOLLOWER_OFFSETS), TONE.drum);
     const axle = [DRUM_LENGTH / 2 - 0.002, STAR_X + DIM.starWheel.thickness / 2 + 0.002] as const;
@@ -301,6 +304,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   };
 
   const steps = [shafts, gears('input'), gears('output'), clutch, shift, finalDrive];
+  await yieldToEventLoop(); // let the loader paint before the first step's work
   for (let i = 0; i < steps.length; i++) {
     steps[i]();
     onProgress(i + 1, steps.length, GROUP_LABELS[i]);

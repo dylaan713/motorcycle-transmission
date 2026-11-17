@@ -16,15 +16,28 @@ export interface CalloutSpec {
   part: PartId;
 }
 
-/** Listed top to bottom within each side. With the default camera the clutch is on the right. */
+/**
+ * The left column top to bottom, then the right: also the cards' tab order. With the default
+ * camera the sprocket end is on the left and the clutch on the right.
+ */
 export const CALLOUTS: CalloutSpec[] = [
   { anchor: 'outputShaft', side: 'left', part: 'outputShaft', title: 'Output shaft', text: 'Drives the chain. It turns only with the rear wheel.' },
-  { anchor: 'clutch', side: 'right', part: 'clutchBasket', title: 'Clutch', text: 'Connects the engine to the gearbox, and lets it slip or let go.' },
   { anchor: 'finalDrive', side: 'left', part: 'chain', title: 'Final drive', text: 'Sprockets and chain carry the output to the rear wheel.' },
-  { anchor: 'inputShaft', side: 'right', part: 'inputShaft', title: 'Input shaft', text: 'Driven by the clutch. Its gears turn whenever the clutch does.' },
   { anchor: 'forks', side: 'left', part: 'forkC', title: 'Shift forks', text: 'Slide a gear sideways to lock its neighbour to the shaft.' },
+  { anchor: 'clutch', side: 'right', part: 'clutchBasket', title: 'Clutch', text: 'Connects the engine to the gearbox, and lets it slip or let go.' },
+  { anchor: 'inputShaft', side: 'right', part: 'inputShaft', title: 'Input shaft', text: 'Driven by the clutch. Its gears turn whenever the clutch does.' },
   { anchor: 'shiftDrum', side: 'right', part: 'shiftDrum', title: 'Shift drum', text: 'Each click of the pedal turns it one step and moves a fork.' },
 ];
+
+/** One reusable point per anchor, for projectAnchors. */
+export function projectionBuffer(): Record<string, Projected> {
+  return Object.fromEntries(CALLOUTS.map((c) => [c.anchor, { x: 0, y: 0, visible: false }]));
+}
+
+/** Projects every callout's anchor into `into`'s own objects: nothing is allocated. */
+export function projectAnchors(view: Pick<View3d, 'anchors' | 'project'>, into: Record<string, Projected>): void {
+  for (const c of CALLOUTS) view.project(view.anchors[c.anchor], into[c.anchor]);
+}
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Projected { x: number; y: number; visible: boolean }
@@ -70,47 +83,59 @@ const MAX_GAP = 40; // spread no wider than this
 const EDGE_GAP = 12; // px kept clear of an avoided region
 const MARGIN = 0;
 
+type Line = { x1: number; y1: number; x2: number; y2: number };
+const lineBuffers = new WeakMap<PlacedCallout, Line>();
+
 /**
  * Fixed slots: each side's cards stack in a column at that side of the stage, centred in the
  * vertical band left free by the regions to avoid. Slots depend only on the size, so the cards
- * hold still while the camera moves and only the leader lines follow the anchors.
+ * hold still while the camera moves and only the leader lines follow the anchors. Pass `out` from
+ * a previous call to have its objects reused instead of new ones made.
  */
 export function layoutCallouts(
   specs: CalloutSpec[], projected: Record<string, Projected>, size: { w: number; h: number },
-  opts: CalloutLayoutOptions = {},
+  opts: CalloutLayoutOptions = {}, out: PlacedCallout[] = [],
 ): PlacedCallout[] {
   const card = opts.card ?? DEFAULT_CARD;
   const margin = opts.margin ?? MARGIN;
   const avoid = opts.avoid ?? [];
   const pitch = Math.max(MIN_PITCH, card.h + SLOT_GAP);
-  const columns = { left: margin, right: size.w - margin - card.w };
-  const slots = new Map<CalloutSpec, { x: number; y: number; fits: boolean }>();
+  out.length = specs.length;
   for (const side of ['left', 'right'] as const) {
-    const x = columns[side];
+    const x = side === 'left' ? margin : size.w - margin - card.w;
     let top = margin, bottom = size.h - margin;
     for (const r of avoid) {
       if (r.x >= x + card.w || r.x + r.w <= x) continue; // not in this column
       if (r.y + r.h / 2 > size.h / 2) bottom = Math.min(bottom, r.y - EDGE_GAP);
       else top = Math.max(top, r.y + r.h + EDGE_GAP);
     }
-    const mine = specs.filter((s) => s.side === side);
-    if (mine.length === 0) continue;
+    let n = 0;
+    for (const s of specs) if (s.side === side) n++;
+    if (n === 0) continue;
     const band = bottom - top;
-    const fits = band >= (mine.length - 1) * pitch + card.h;
+    const fits = band >= (n - 1) * pitch + card.h;
     // spread a little when there is room, centred in the band
-    const step = mine.length > 1 ? Math.min(card.h + MAX_GAP, Math.max(pitch, (band - card.h) / (mine.length - 1))) : 0;
-    const used = (mine.length - 1) * step + card.h;
+    const step = n > 1 ? Math.min(card.h + MAX_GAP, Math.max(pitch, (band - card.h) / (n - 1))) : 0;
+    const used = (n - 1) * step + card.h;
     const y0 = fits ? top + (band - used) / 2 : top;
-    mine.forEach((s, i) => slots.set(s, { x, y: y0 + i * step, fits }));
+    let k = 0;
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      if (spec.side !== side) continue;
+      const y = y0 + k++ * step;
+      let e = out[i];
+      if (!e) { e = { spec, card: { x, y }, line: null, fits }; out[i] = e; }
+      e.spec = spec; e.card.x = x; e.card.y = y; e.fits = fits;
+      const p = projected[spec.anchor];
+      if (p && p.visible) {
+        let line = lineBuffers.get(e);
+        if (!line) { line = { x1: 0, y1: 0, x2: 0, y2: 0 }; lineBuffers.set(e, line); }
+        line.x1 = side === 'left' ? x + card.w : x; line.y1 = y + card.h / 2; line.x2 = p.x; line.y2 = p.y;
+        e.line = line;
+      } else e.line = null;
+    }
   }
-  return specs.map((spec) => {
-    const slot = slots.get(spec)!;
-    const p = projected[spec.anchor];
-    const line = p && p.visible
-      ? { x1: spec.side === 'left' ? slot.x + card.w : slot.x, y1: slot.y + card.h / 2, x2: p.x, y2: p.y }
-      : null;
-    return { spec, card: { x: slot.x, y: slot.y }, line, fits: slot.fits };
-  });
+  return out;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -167,7 +192,16 @@ export function mountCallouts(layer: HTMLElement, view: View3d): Callouts {
   let cardSize = DEFAULT_CARD;
   let readAvoid: () => Rect[] = () => [];
   let avoid: Rect[] = [];
-  const projected: Record<string, Projected> = {};
+  const layoutOpts: CalloutLayoutOptions = { card: cardSize, avoid };
+  const projected = projectionBuffer();
+  const placed: PlacedCallout[] = [];
+  const drawn = new Float64Array(CALLOUTS.length * 6).fill(Number.NaN); // last written card x, y and line x1..y2
+  const set = (node: Element, attr: string, i: number, v: number): void => {
+    const r = Math.round(v * 2) / 2; // half-pixel steps: no DOM write for a sub-pixel change
+    if (drawn[i] === r) return;
+    drawn[i] = r;
+    node.setAttribute(attr, String(r));
+  };
 
   const apply = (): void => {
     layer.hidden = !visible || size.w < MIN_STAGE_W;
@@ -193,23 +227,28 @@ export function mountCallouts(layer: HTMLElement, view: View3d): Callouts {
         ...(sr ? reservedRegions({ w: sr.width, h: sr.height }, { x: lr.left - sr.left, y: lr.top - sr.top }, null) : []),
         ...readAvoid(),
       ];
+      layoutOpts.card = cardSize; layoutOpts.avoid = avoid;
       measured = true;
     }
-    for (const c of CALLOUTS) projected[c.anchor] = view.project(view.anchors[c.anchor]);
-    const placed = layoutCallouts(CALLOUTS, projected, size, { card: cardSize, avoid });
-    placed.forEach((p, i) => {
-      const card = cards[i], l = lines[i];
-      card.hidden = !p.fits;
-      card.style.transform = `translate(${Math.round(p.card.x)}px, ${Math.round(p.card.y)}px)`;
+    projectAnchors(view, projected);
+    layoutCallouts(CALLOUTS, projected, size, layoutOpts, placed);
+    for (let i = 0; i < placed.length; i++) {
+      const p = placed[i], card = cards[i], l = lines[i], o = i * 6;
+      if (card.hidden === p.fits) card.hidden = !p.fits;
+      const cx = Math.round(p.card.x), cy = Math.round(p.card.y);
+      if (drawn[o] !== cx || drawn[o + 1] !== cy) { drawn[o] = cx; drawn[o + 1] = cy; card.style.transform = `translate(${cx}px, ${cy}px)`; }
       const show = p.fits && p.line !== null;
       if (show) {
         const { x1, y1, x2, y2 } = p.line!;
-        l.line.setAttribute('x1', x1.toFixed(1)); l.line.setAttribute('y1', y1.toFixed(1));
-        l.line.setAttribute('x2', x2.toFixed(1)); l.line.setAttribute('y2', y2.toFixed(1));
-        l.ring.setAttribute('cx', x2.toFixed(1)); l.ring.setAttribute('cy', y2.toFixed(1));
+        set(l.line, 'x1', o + 2, x1); set(l.line, 'y1', o + 3, y1);
+        if (drawn[o + 4] !== Math.round(x2 * 2) / 2 || drawn[o + 5] !== Math.round(y2 * 2) / 2) {
+          set(l.line, 'x2', o + 4, x2); set(l.line, 'y2', o + 5, y2);
+          l.ring.setAttribute('cx', String(drawn[o + 4])); l.ring.setAttribute('cy', String(drawn[o + 5]));
+        }
       }
-      l.g.style.display = show ? '' : 'none';
-    });
+      const display = show ? '' : 'none';
+      if (l.g.style.display !== display) l.g.style.display = display;
+    }
   };
 
   const stopDrag = view.onCamera((phase) => {
@@ -226,7 +265,8 @@ export function mountCallouts(layer: HTMLElement, view: View3d): Callouts {
 
   return {
     sync() {
-      if (!visible) return;
+      // hidden (labels off, a narrow stage) or mid-drag: no work; redraw in full when shown again
+      if (!visible || dragging || (layer.hidden && size.w === view.size.w && size.h === view.size.h)) { version = -1; return; }
       const { w, h } = view.size;
       if (view.cameraVersion === version && w === size.w && h === size.h) {
         if (++still === SETTLE_FRAMES && !layer.hidden) markHidden();
