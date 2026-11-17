@@ -1,6 +1,27 @@
 # HANDOFF
 
-## State Update (2026-11-17, 07:30 EST, session closed by the owner)
+## State Update (2026-11-17, afternoon)
+
+- **Done:** the stage 3 fix wave is finished and re-reviewed clean (27 of 27 items addressed;
+  commits a2c5262, 3bfbd03, acb4f97, 2b903b6, 8a034f5, f67b1c1, 27c6439). Stage 5 task 4 (How it
+  works, glossary, `docs/MODEL.md`) is fixed and re-reviewed clean (a0ada4d); it is content only,
+  not yet wired into the page. `docs/SIMPLIFICATIONS.md` exists. 380 tests passing, `tsc --noEmit`
+  clean, tree clean at 27c6439.
+- **Next:** stage 3b, the instrument (`docs/superpowers/plans/2026-11-16-stage-3b-the-instrument.md`),
+  then items 4 to 6 of the list in the earlier state below. Waiting on the owner's go-ahead.
+- **Carried minors (none blocking):** for stage 3b: header title ends in an ellipsis at 390 px; the
+  3D view draws a bush under the clutch basket where the schematic draws a needle bearing; the
+  phone orbit hint can be dismissed while hidden; the loader's first live-region message may not
+  be announced. For stage 6: committed closed-solid tests for the drum and shift arm as the
+  assembly builds them; a renderer factory so dispose and the setup-throw path can be tested; the
+  symbol `g` used for both gravity and gear ratio in the copy. Details:
+  `.superpowers/sdd/2026-11-16-stage-3-3d-model/fix-wave-rereview.md` and
+  `.superpowers/sdd/2026-11-16-stage-5-teaching-layer/task-4-rereview.md`.
+- **Unresolved, reported not corrected:** "Decisions made" below says idle throttle authority was
+  tuned 0.15 -> 0.4; git shows 0.4 since the first commit. The site copy and `docs/MODEL.md` state
+  both.
+
+## Earlier state (2026-11-17, 07:30 EST, session closed by the owner; superseded above)
 
 - **What happened overnight:** almost nothing. The two builders that were running sat blocked on
   Bash permission prompts from about 22:50 until 07:00, because the session's permission mode
