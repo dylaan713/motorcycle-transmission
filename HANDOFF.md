@@ -1,6 +1,17 @@
 # HANDOFF
 
-## State Update (2026-11-17, afternoon)
+## State Update (2026-11-17, paused by the owner mid stage 3b)
+
+- **Done:** stage 3b Task 1 of 7 (instrument palette, type, full-bleed skeleton), commit 637c0d8,
+  reviewed clean (0 Critical, 0 Important, 9 Minor). Gate at 637c0d8: 393 tests, `tsc --noEmit`
+  clean, build clean, initial 32.35 kB and 3D chunk 158.01 kB gzipped. The page works but is
+  deliberately half-dressed: readings in a temporary plain overlay, panel behind a temporary button.
+- **Next:** stage 3b Task 2 (tachometer arc, gear numeral, readings). Ledger, briefs for Tasks 2 to
+  7 and the Task 1 minors to hand to later tasks:
+  `.superpowers/sdd/2026-11-16-stage-3b-the-instrument/` (`progress.md`, `task-1-findings.md`).
+  To resume: "Read HANDOFF.md and continue stage 3b from Task 2."
+
+## Earlier state (2026-11-17, afternoon; superseded above)
 
 - **Done:** the stage 3 fix wave is finished and re-reviewed clean (27 of 27 items addressed;
   commits a2c5262, 3bfbd03, acb4f97, 2b903b6, 8a034f5, f67b1c1, 27c6439). Stage 5 task 4 (How it
