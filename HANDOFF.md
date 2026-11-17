@@ -5,7 +5,7 @@
 - **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) built: shell,
   loop, controls, schematic, readouts and panel all committed; two review fix rounds were in
   flight. Stage 3 (3D): all part geometry built and reviewed; assembly was in flight. Plans for
-  stages 2 to 5 are written. 175 tests passing at commit 27df4c0.
+  stages 2 to 5 are written. 186 tests passing at commit 4b16589.
 - **Next:** Resume the three pieces that were in flight (below), then stage 3 Tasks 1 and 5, then
   stages 4, 5 and 6.
 
@@ -16,11 +16,10 @@ working tree: run `git status` first, then `npm test` and `npm run typecheck`, a
 whether to finish it or discard it. Build ledgers (git-ignored, on disk) are under
 `.superpowers/sdd/<plan name>/progress.md`; findings and briefs sit beside them.
 
-1. **Stage 2, Task 5 fix round** (2D schematic). Findings:
-   `.superpowers/sdd/2026-11-16-stage-2-2d-panel-and-controls/task-5-findings.md`. Finding 1
-   (clutch plates) is committed as 6a35356. Remaining: split `src/view2d/schematic.ts` into
-   `layout.ts`, `paint.ts`, `draw/*`, `flow.ts`; findings 3 to 9; reveal fade per part; both
-   halves of the 3rd/4th sliding piece in the torque fill. Adds `pedal.travel` to `SimState`.
+1. **Stage 2, Task 5 fix round** (2D schematic): landed as 6a35356, 51efba5, 71ad4ac, 4b16589
+   (186 tests). It still needs its scoped re-review against `.../task-5-findings.md`
+   (those four commits; the schematic is now split across `src/view2d/`). `SimState.pedal.travel`
+   now exists.
 2. **Stage 2, Task 6 fix round** (panel): done and re-reviewed clean (fd3a43c). Nothing to resume.
 3. **Stage 3, Task 4** (3D assembly and pose, plus `src/view3d/materials.ts`). Brief:
    `.superpowers/sdd/2026-11-16-stage-3-3d-model/task-4-brief.md`; the dispatch clarifications are
