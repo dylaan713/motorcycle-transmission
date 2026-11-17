@@ -67,7 +67,8 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 
 /* ---- layout, desktop first ---- */
 .app {
-  display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr); height: 100dvh;
+  /* one column no wider than the viewport: the header's title gives way (ellipsis), never the page */
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-h) minmax(0, 1fr); height: 100dvh;
   position: relative; overflow: clip; /* nothing inside can make the page scroll */
 }
 
@@ -134,6 +135,13 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 .tool:focus-visible { outline-offset: -2px; }
 .toolbar-hint { margin: 0; font-size: 0.6875rem; line-height: 16px; color: var(--third); white-space: nowrap; }
 .toolbar-hint[hidden] { display: none; }
+/* phones: how to move the camera, once, over the bottom of the main view until the first touch */
+.touch-hint {
+  position: absolute; z-index: 2; left: 50%; bottom: calc(var(--tools-h) + var(--gutter) + var(--s2)); transform: translateX(-50%);
+  margin: 0; padding: var(--s1) var(--s3); font-size: var(--t-xs); line-height: 1.4; color: var(--ink); white-space: nowrap;
+  pointer-events: none; background: var(--surface); border: 1px solid var(--steel-2); border-radius: 12px;
+}
+.touch-hint[hidden] { display: none; }
 
 /* ---- callouts: cards on leader lines over the 3D view, sitting exactly on the main slot ---- */
 .callout-layer {
@@ -162,8 +170,10 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 
 /* ---- 3D loader, over the stage; the schematic stays usable underneath ---- */
 .loader {
-  /* top centre, clear of the status line (top left) and the cluster (top right); over the overlay */
-  position: absolute; z-index: 3; top: var(--s4); left: 50%; width: 220px; transform: translateX(-50%);
+  /* centred in the room left of the cluster (300px and its 16px margin, top right), clear of it at
+     every width; over the overlay */
+  position: absolute; z-index: 3; top: var(--s4); left: calc((100% - 316px) / 2);
+  width: min(220px, calc(100% - 316px - 2 * var(--gutter))); transform: translateX(-50%);
   padding: var(--s2) var(--s3); font-size: var(--t-xs); color: var(--ink); pointer-events: none;
   background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
   transition: opacity 300ms ease-out;
@@ -304,7 +314,8 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 .deck-stack .deck-btn { flex: 1 1 0; }
 /* while the demo rides: how to take over, at the deck's right end, where the controls are */
 .deck-invite {
-  display: none; align-self: center; max-width: 15rem; margin: 0 0 0 auto;
+  /* 20rem holds the sentence on one line at 1440px; narrower decks wrap it to two */
+  display: none; align-self: center; max-width: 20rem; margin: 0 0 0 auto;
   font-size: var(--t-sm); line-height: 1.4; color: var(--third);
 }
 @media (min-width: 1280px) {
@@ -345,8 +356,10 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--steel-2); border-radius: 8px;
 }
+/* the instruments are read at a glance: an opaque face, never the model moving through it */
 .cluster {
-  flex: none; max-height: 220px; padding: var(--s3) 10px var(--s2);
+  flex: none; max-height: 220px; padding: var(--s3) 9px var(--s2); /* 9px: a 280px tachometer track in 300px */
+  background: var(--surface);
   display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'gear figures' 'tach tach';
   column-gap: var(--s4); row-gap: var(--s2); align-items: end;
 }
@@ -545,6 +558,8 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   }
   .chip-hint { grid-column: 2; padding-left: 0; border-left: 0; }
   .status { top: calc(var(--strip-h) + var(--s2)); max-width: calc(100% - 2 * var(--gutter)); }
+  /* below the instrument strip, centred across the stage */
+  .loader { top: calc(var(--strip-h) + var(--s2)); left: 50%; width: min(220px, calc(100% - 2 * var(--gutter))); }
   .part-btn { min-height: 44px; }
   .tab { min-height: 44px; }
 }

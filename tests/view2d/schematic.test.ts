@@ -209,3 +209,16 @@ test('every part has a shape in the schematic, the clutch release included, and 
     expect(p.parts).not.toContain('clutchRelease');
   }
 });
+
+test('with torque flow off both views get the empty path: the schematic fills nothing and draws no line', async () => {
+  const { shownPath, EMPTY_PATH } = await import('../../src/model/torquePath');
+  const { st, path } = inGearState(3, 60);
+  expect(shownPath(path, true)).toBe(path);
+  expect(shownPath(path, false)).toBe(EMPTY_PATH);
+  const carriers = new Set<string>();
+  torqueCarriers(shownPath(path, false), st, carriers as Set<never>);
+  expect(carriers.size).toBe(0);
+  const flow = createFlow();
+  flow.build(st, shownPath(path, false), schematicShapes(st));
+  expect(flow.points()).toEqual([]);
+});

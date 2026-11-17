@@ -12,14 +12,22 @@ export interface Loader {
   remove(): void;
 }
 
-/** A thin progress bar with a percentage and the current step, over the stage. */
+/** How long "3D view ready" stays in the page for a screen reader to say it, in ms. */
+const ANNOUNCE_MS = 3000;
+
+/**
+ * A thin progress bar with a percentage and the current step, over the stage. The steps change
+ * several times a second, so they are for the eye only: a screen reader hears "Loading 3D view"
+ * and then "3D view ready", from a live region of their own.
+ */
 export function mountLoader(host: HTMLElement): Loader {
   const label = el('span', 'loader-label', {}, 'Loading 3D view');
   const pct = el('span', 'loader-pct', {}, '0%');
   const fill = el('div', 'loader-fill');
-  const root = el('div', 'loader mono', { role: 'status', 'aria-live': 'polite' },
-    el('div', 'loader-line', {}, label, pct), el('div', 'loader-bar', { 'aria-hidden': 'true' }, fill));
-  host.append(root);
+  const root = el('div', 'loader mono', { 'aria-hidden': 'true' },
+    el('div', 'loader-line', {}, label, pct), el('div', 'loader-bar', {}, fill));
+  const said = el('span', 'sr-only', { role: 'status' }, 'Loading 3D view');
+  host.append(root, said);
   return {
     progress(done, total, text) {
       const p = total > 0 ? clamp(done / total, 0, 1) : 0;
@@ -29,8 +37,10 @@ export function mountLoader(host: HTMLElement): Loader {
     },
     done() {
       root.dataset.done = '';
+      setText(said, '3D view ready');
       setTimeout(() => root.remove(), FADE_MS);
+      setTimeout(() => said.remove(), ANNOUNCE_MS);
     },
-    remove() { root.remove(); },
+    remove() { root.remove(); said.remove(); },
   };
 }

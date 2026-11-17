@@ -54,27 +54,8 @@ export interface PlacedCallout {
   spec: CalloutSpec;
   card: { x: number; y: number };
   line: { x1: number; y1: number; x2: number; y2: number } | null;
-  /** False when its side has no room for all its cards clear of `avoid`; the caller hides them. */
+  /** False when the card has no room clear of `avoid`, its column's other cards and its own anchor; the caller hides it. */
   fits: boolean;
-}
-
-/** The stage's top-right corner is kept for the instrument cluster, CSS px. */
-export const INSTRUMENT_CLUSTER = { w: 300, h: 220 };
-/** Status line and loader along the top of the stage, px. */
-const TOP_BAND = 48;
-
-/**
- * Regions of the stage no callout may cover, in the callout layer's coordinates (`origin` is the
- * layer's top-left within the stage): the status line along the top, the instrument cluster in the
- * top-right corner, and the inset (already in layer coordinates) when it shows.
- */
-export function reservedRegions(stage: { w: number; h: number }, origin: { x: number; y: number }, inset: Rect | null): Rect[] {
-  const out: Rect[] = [
-    { x: -origin.x, y: -origin.y, w: stage.w, h: TOP_BAND },
-    { x: stage.w - INSTRUMENT_CLUSTER.w - origin.x, y: -origin.y, w: INSTRUMENT_CLUSTER.w, h: INSTRUMENT_CLUSTER.h },
-  ];
-  if (inset) out.push(inset);
-  return out;
 }
 
 const DEFAULT_CARD = { w: 220, h: 72 };
@@ -83,15 +64,33 @@ const SLOT_GAP = 12; // px between cards, at least
 const MAX_GAP = 40; // spread no wider than this
 const EDGE_GAP = 12; // px kept clear of an avoided region
 const MARGIN = 0;
+/** A card keeps this far from its own anchor (the anchor ring and a little air), px. */
+const ANCHOR_CLEAR = 8;
 
 type Line = { x1: number; y1: number; x2: number; y2: number };
 const lineBuffers = new WeakMap<PlacedCallout, Line>();
 
+/** The stretches of [top, bottom] that no region in the column x..x+w covers, each kept `gap` clear of the regions. */
+function freeIntervals(top: number, bottom: number, x: number, w: number, avoid: readonly Rect[], gap: number): Array<[number, number]> {
+  let free: Array<[number, number]> = [[top, bottom]];
+  for (const r of avoid) {
+    if (r.x >= x + w || r.x + r.w <= x) continue; // not in this column
+    const a = r.y - gap, b = r.y + r.h + gap;
+    free = free.flatMap(([lo, hi]): Array<[number, number]> => (b <= lo || a >= hi ? [[lo, hi]] : [
+      ...(a > lo ? [[lo, a] as [number, number]] : []), ...(b < hi ? [[b, hi] as [number, number]] : []),
+    ]));
+  }
+  return free;
+}
+
 /**
- * Fixed slots: each side's cards stack in a column at that side of the stage, centred in the
- * vertical band left free by the regions to avoid. Slots depend only on the size, so the cards
- * hold still while the camera moves and only the leader lines follow the anchors. Pass `out` from
- * a previous call to have its objects reused instead of new ones made.
+ * Fixed slots: each side's cards stack in a column at that side of the stage. When the tallest
+ * stretch of the column left free by the regions to avoid holds them all, they are centred in it
+ * and spread a little; otherwise they take the free slots top to bottom and the cards past the last
+ * slot drop out. Slots depend only on the size, so the cards hold still while the camera moves and
+ * only the leader lines follow the anchors, except that a card never covers its own anchor: it moves
+ * to the nearest free slot, or drops out when there is none. Pass `out` from a previous call to have
+ * its objects reused instead of new ones made.
  */
 export function layoutCallouts(
   specs: CalloutSpec[], projected: Record<string, Projected>, size: { w: number; h: number },
@@ -104,31 +103,54 @@ export function layoutCallouts(
   out.length = specs.length;
   for (const side of ['left', 'right'] as const) {
     const x = side === 'left' ? margin : size.w - margin - card.w;
-    let top = margin, bottom = size.h - margin;
-    for (const r of avoid) {
-      if (r.x >= x + card.w || r.x + r.w <= x) continue; // not in this column
-      if (r.y + r.h / 2 > size.h / 2) bottom = Math.min(bottom, r.y - EDGE_GAP);
-      else top = Math.max(top, r.y + r.h + EDGE_GAP);
-    }
-    let n = 0;
-    for (const s of specs) if (s.side === side) n++;
+    const free = freeIntervals(margin, size.h - margin, x, card.w, avoid, EDGE_GAP);
+    const members: number[] = [];
+    for (let i = 0; i < specs.length; i++) if (specs[i].side === side) members.push(i);
+    const n = members.length;
     if (n === 0) continue;
-    const band = bottom - top;
-    const fits = band >= (n - 1) * pitch + card.h;
-    // spread a little when there is room, centred in the band
-    const step = n > 1 ? Math.min(card.h + MAX_GAP, Math.max(pitch, (band - card.h) / (n - 1))) : 0;
-    const used = (n - 1) * step + card.h;
-    const y0 = fits ? top + (band - used) / 2 : top;
-    let k = 0;
-    for (let i = 0; i < specs.length; i++) {
-      const spec = specs[i];
-      if (spec.side !== side) continue;
-      const y = y0 + k++ * step;
+
+    // every slot a card could take: each stretch filled from its top at the pitch
+    const grid: number[] = [];
+    for (const [lo, hi] of free) for (let y = lo; y + card.h <= hi; y += pitch) grid.push(y);
+    const inFree = (y: number): boolean => free.some(([lo, hi]) => y >= lo && y + card.h <= hi);
+
+    // the preferred slots: all n centred and spread in the tallest stretch, or the grid's first n
+    const ys: Array<number | null> = [];
+    const [lo, hi] = free.reduce((best, f) => (f[1] - f[0] > best[1] - best[0] ? f : best), [0, 0] as [number, number]);
+    const band = hi - lo;
+    if (band >= (n - 1) * pitch + card.h) {
+      const step = n > 1 ? Math.min(card.h + MAX_GAP, Math.max(pitch, (band - card.h) / (n - 1))) : 0;
+      const y0 = lo + (band - ((n - 1) * step + card.h)) / 2;
+      for (let k = 0; k < n; k++) ys.push(y0 + k * step);
+    } else {
+      for (let k = 0; k < n; k++) ys.push(k < grid.length ? grid[k] : null);
+    }
+
+    // a card over its own anchor moves to the nearest slot that is clear of it and of the other cards
+    const covers = (y: number, p: Projected | undefined): boolean => p !== undefined && p.visible &&
+      p.x >= x - ANCHOR_CLEAR && p.x <= x + card.w + ANCHOR_CLEAR && p.y >= y - ANCHOR_CLEAR && p.y <= y + card.h + ANCHOR_CLEAR;
+    for (let k = 0; k < n; k++) {
+      const y = ys[k];
+      const p = projected[specs[members[k]].anchor];
+      if (y === null || !covers(y, p)) continue;
+      const taken = (c: number): boolean => ys.some((o, j) => j !== k && o !== null && Math.abs(o - c) < card.h + SLOT_GAP);
+      let best: number | null = null;
+      for (const c of [...grid, ...ys.flatMap((o) => (o === null ? [] : [o - pitch, o + pitch]))]) {
+        if (!inFree(c) || taken(c) || covers(c, p)) continue;
+        if (best === null || Math.abs(c - y) < Math.abs(best - y)) best = c;
+      }
+      ys[k] = best;
+    }
+
+    for (let k = 0; k < n; k++) {
+      const i = members[k], spec = specs[i];
+      const fits = ys[k] !== null;
+      const y = ys[k] ?? lo;
       let e = out[i];
       if (!e) { e = { spec, card: { x, y }, line: null, fits }; out[i] = e; }
       e.spec = spec; e.card.x = x; e.card.y = y; e.fits = fits;
       const p = projected[spec.anchor];
-      if (p && p.visible) {
+      if (fits && p && p.visible) {
         let line = lineBuffers.get(e);
         if (!line) { line = { x1: 0, y1: 0, x2: 0, y2: 0 }; lineBuffers.set(e, line); }
         line.x1 = side === 'left' ? x + card.w : x; line.y1 = y + card.h / 2; line.x2 = p.x; line.y2 = p.y;
@@ -222,12 +244,7 @@ export function mountCallouts(layer: HTMLElement, view: View3d): Callouts {
     if (!measured) {
       for (const c of cards) c.hidden = false;
       cardSize = { w: cards[0].offsetWidth, h: Math.max(...cards.map((c) => c.offsetHeight)) };
-      const stageEl = layer.parentElement;
-      const sr = stageEl?.getBoundingClientRect(), lr = layer.getBoundingClientRect();
-      avoid = [
-        ...(sr ? reservedRegions({ w: sr.width, h: sr.height }, { x: lr.left - sr.left, y: lr.top - sr.top }, null) : []),
-        ...readAvoid(),
-      ];
+      avoid = readAvoid(); // the page measures what the cards must keep clear of
       layoutOpts.card = cardSize; layoutOpts.avoid = avoid;
       measured = true;
     }

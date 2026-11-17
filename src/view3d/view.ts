@@ -6,7 +6,6 @@ import type { BufferGeometry, InstancedMesh, Intersection, LineBasicMaterial, Ma
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DRAG_PX, type View } from '../app/view';
 import type { PartId } from '../model/parts';
-import { EMPTY_PATH } from '../model/torquePath';
 import { COLORS } from '../tokens';
 import type { Assembly } from './assembly';
 import { isLambert, isLine, materialsOf, partLook, type Tone } from './materials';
@@ -37,7 +36,6 @@ export interface View3d extends View {
   readonly size: { w: number; h: number };
   /** Bumps whenever the camera or the size changes, so overlays redraw only when they must. */
   readonly cameraVersion: number;
-  setTorqueFlow(on: boolean): void;
   /**
    * Pointer drags of the camera: 'start' on press, 'drag' once the pointer has moved more than
    * DRAG_PX with the camera following it, 'end' on release. Wheel zoom and plain clicks are not drags.
@@ -254,7 +252,6 @@ function setUp(container: HTMLElement, assembly: Assembly, renderer: WebGLRender
   const ndc = new Vector2();
   const hits: Intersection[] = [];
 
-  let torqueFlow = true;
   let edgeOpacity = -1;
   /** Edge opacity for the camera distance; an edge is transparent only while it is see-through. */
   const fadeEdges = (): void => {
@@ -276,7 +273,7 @@ function setUp(container: HTMLElement, assembly: Assembly, renderer: WebGLRender
   return {
     render(state, path) {
       if (lost || width <= 0 || height <= 0 || (typeof document !== 'undefined' && document.hidden)) return;
-      poseAssembly(assembly, state, torqueFlow ? path : EMPTY_PATH);
+      poseAssembly(assembly, state, path); // the page passes the empty path with torque flow off
       const look = highlighted === null ? undefined : looks.get(highlighted);
       if (look) paint(look, true); // setTorque may have repainted it
       controls.update();
@@ -357,7 +354,6 @@ function setUp(container: HTMLElement, assembly: Assembly, renderer: WebGLRender
     },
     size,
     get cameraVersion() { return version; },
-    setTorqueFlow(on) { torqueFlow = on; },
     onCamera(fn) { cameraListeners.add(fn); return () => { cameraListeners.delete(fn); }; },
     get contextLost() { return lost; },
     onContextChange,

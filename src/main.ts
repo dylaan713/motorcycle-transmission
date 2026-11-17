@@ -12,7 +12,8 @@ import { createStageHost, type ViewName } from './app/stageHost';
 import { DRAG_PX, type View } from './app/view';
 import { mountDeck } from './ui/deck';
 import { createSimulation } from './sim/simulation';
-import { torquePath } from './model/torquePath';
+import { shownPath, torquePath } from './model/torquePath';
+import { createChoice } from './app/choices';
 import { selection } from './app/selection';
 import { createSchematic } from './view2d/schematic';
 import { formatReading, mountCluster, type Reading } from './ui/readouts';
@@ -24,6 +25,7 @@ import { load3d, webglAvailable } from './view3d/load';
 import type { View3d } from './view3d/view';
 import { mountCallouts, type Callouts, type Rect } from './ui/callouts';
 import { mountToolbar, ORBIT_STEP, ZOOM_STEP, type Toolbar } from './ui/toolbar';
+import { mountTouchHint, type TouchHint } from './ui/touchHint';
 
 applyTokens(document.documentElement);
 
@@ -62,20 +64,25 @@ const cluster = mountCluster(clusterEl);
 
 const wide = matchMedia('(min-width: 900px)');
 const guard = createContextGuard(); // the 3D view's WebGL context: which view may be main
-let insetWanted = wide.matches; // phones get the whole stage for one view
-const applyInset = (): void => host.setInset(insetWanted && !guard.lost); // never show a dead 3D canvas
+// the inset and the labels are on at 900px and wider until the visitor sets them; then their choice holds
+const insetChoice = createChoice((isWide) => isWide); // phones get the whole stage for one view
+const labelsChoice = createChoice((isWide) => isWide);
+const applyInset = (): void => host.setInset(insetChoice.value(wide.matches) && !guard.lost); // never show a dead 3D canvas
 applyInset();
 // set once the 3D view has arrived
 let view3d: View3d | null = null;
 let toolbar: Toolbar | null = null;
 let callouts: Callouts | null = null;
 let leave3d: (() => void) | null = null;
-let labelsOn = wide.matches; // labels default on at 900px and wider
+let touchHint: TouchHint | null = null; // once the 3D view has arrived; it outlives a replaced view
+/** Torque flow lights the path in both views; off, both draw the empty path. */
+let torqueFlow = true;
 const syncChrome = (): void => {
-  toolbar?.sync({ view: host.main ?? 'schematic', inset: host.inset !== null });
-  callouts?.setVisible(labelsOn && host.main === '3d');
+  toolbar?.sync({ view: host.main ?? 'schematic', inset: host.inset !== null, torqueFlow });
+  callouts?.setVisible(labelsChoice.value(wide.matches) && host.main === '3d');
   callouts?.invalidate();
   stage.toggleAttribute('data-inset', host.inset !== null);
+  touchHint?.sync({ narrow: !wide.matches, main3d: host.main === '3d' });
 };
 /** Makes `name` the main view, unless the 3D context is lost and it would put the dead canvas back. */
 const showMain = (name: ViewName): void => {
@@ -84,10 +91,8 @@ const showMain = (name: ViewName): void => {
   syncChrome();
 };
 wide.addEventListener('change', () => {
-  insetWanted = wide.matches;
   applyInset();
-  labelsOn = wide.matches;
-  toolbar?.sync({ labels: labelsOn });
+  toolbar?.sync({ labels: labelsChoice.value(wide.matches) });
   syncChrome();
 });
 insetSlot.addEventListener('click', () => { if (host.inset !== null) showMain(host.inset); });
@@ -137,7 +142,7 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
   }
   cluster.sync(reading, state);
   deck.sync(state, loop.lastInputs);
-  host.render(state, torquePath(state));
+  host.render(state, shownPath(torquePath(state), torqueFlow));
   callouts?.sync();
   hold.frame();
 });
@@ -209,14 +214,15 @@ function arrive3d(v3: View3d): void {
   stage.toggleAttribute('data-tools', true); // the main view makes room for it
   const bar = mountToolbar(tools, {
     onView: (v) => showMain(v),
-    onInset: (on) => { insetWanted = on; applyInset(); syncChrome(); },
-    onTorqueFlow: (on) => v3.setTorqueFlow(on),
-    onLabels: (on) => { labelsOn = on; syncChrome(); },
+    onInset: (on) => { insetChoice.choose(on); applyInset(); syncChrome(); },
+    onTorqueFlow: (on) => { torqueFlow = on; },
+    onLabels: (on) => { labelsChoice.choose(on); syncChrome(); },
     onResetCamera: () => v3.resetCamera(),
     onOrbit: (d) => v3.orbit(d, 0),
     onZoom: (f) => v3.zoom(f),
-  }, { view: host.main ?? '3d', inset: host.inset !== null, labels: labelsOn });
+  }, { view: host.main ?? '3d', inset: host.inset !== null, labels: labelsChoice.value(wide.matches) });
   toolbar = bar;
+  touchHint ??= mountTouchHint(stage);
   const cards = mountCallouts(layer, v3);
   callouts = cards;
   // cards keep clear of the status line and loader along the top, the cluster and part card, the toolbar and the inset

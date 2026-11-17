@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { CALLOUTS, layoutCallouts, projectAnchors, projectionBuffer, reservedRegions } from '../../src/ui/callouts';
+import * as calloutsModule from '../../src/ui/callouts';
+import { CALLOUTS, layoutCallouts, projectAnchors, projectionBuffer, type PlacedCallout, type Rect } from '../../src/ui/callouts';
 
 test('callouts take fixed slots on their side and lines join card to anchor', () => {
   const projected = Object.fromEntries(CALLOUTS.map((c, i) => [c.anchor, { x: 400 + i * 40, y: 200 + i * 30, visible: i !== 2 }]));
@@ -70,25 +71,79 @@ test('cards keep clear of the regions they must avoid, and say when a side has n
     for (const z of [inset, toolbar]) expect(overlaps(r, z)).toBe(false);
     for (const p of out) if (p !== o) expect(overlaps(r, { ...p.card, ...card })).toBe(false);
   }
+  // a column with room for one card keeps the first and drops the rest, rather than overlap
   const cramped = layoutCallouts(CALLOUTS, projected, { w: 1000, h: 260 }, { card, avoid: [{ x: 0, y: 120, w: 340, h: 140 }] });
-  expect(cramped.filter((o) => o.spec.side === 'left').every((o) => !o.fits)).toBe(true);
+  expect(cramped.filter((o) => o.spec.side === 'left').map((o) => o.fits)).toEqual([true, false, false]);
+  expect(cramped[0].card.y + card.h).toBeLessThanOrEqual(120);
 });
 
-test('reserved regions: the instrument cluster top-right and the inset bottom-left stay clear, three cards a side', () => {
-  // a 1440 × 900 stage: 1080 × 712, its layer inset 24 px, the inset 28% at bottom-left
-  const stage = { w: 1080, h: 712 }, origin = { x: 24, y: 24 };
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const rectOf = (o: PlacedCallout, card: { w: number; h: number }): Rect => ({ ...o.card, ...card });
+/** Every placed card is clear of the regions and of every other placed card. */
+const expectClear = (out: PlacedCallout[], card: { w: number; h: number }, avoid: Rect[]) => {
+  for (const o of out) {
+    if (!o.fits) continue;
+    for (const z of avoid) expect(overlaps(rectOf(o, card), z), `${o.spec.title} over a region`).toBe(false);
+    for (const p of out) if (p !== o && p.fits) expect(overlaps(rectOf(o, card), rectOf(p, card)), `${o.spec.title} over ${p.spec.title}`).toBe(false);
+  }
+};
+
+test('the regions to avoid come from the page alone: the callouts keep no copy of the stage layout', () => {
+  expect(Object.keys(calloutsModule)).not.toContain('reservedRegions');
+  expect(Object.keys(calloutsModule)).not.toContain('INSTRUMENT_CLUSTER');
+});
+
+test('with the page\'s regions at 1440 × 900 (top band, cluster, toolbar, inset), three cards a side fit', () => {
+  // the callout layer of a 1080 × 712 stage, inset 24 px: the regions as main.ts measures them, in layer coordinates
   const layer = { w: 1032, h: 606 };
-  const inset = { x: 0, y: 712 - 24 - 175 - 24, w: 278, h: 175 };
-  const reserved = reservedRegions(stage, origin, inset);
-  expect(reserved).toContainEqual({ x: stage.w - 300 - origin.x, y: -origin.y, w: 300, h: 220 });
+  const avoid: Rect[] = [
+    { x: 0, y: 0, w: layer.w, h: 48 },                    // status line and loader
+    { x: layer.w + 24 - 16 - 300, y: -24 + 16, w: 300, h: 196 }, // the instrument cluster, top right
+    { x: 302, y: 606, w: 730, h: 58 },                    // the toolbar, under the layer
+    { x: 0, y: 712 - 24 - 175 - 24 - 24, w: 278, h: 175 }, // the inset, bottom left
+  ];
   const projected = Object.fromEntries(CALLOUTS.map((c) => [c.anchor, { x: 500, y: 300, visible: true }]));
   const card = { w: 220, h: 72 };
-  const out = layoutCallouts(CALLOUTS, projected, layer, { card, avoid: reserved });
-  expect(out.filter((o) => o.spec.side === 'left').length).toBe(3);
-  expect(out.filter((o) => o.spec.side === 'right').length).toBe(3);
-  for (const o of out) {
-    expect(o.fits, o.spec.title).toBe(true);
-    if (o.spec.side === 'right') expect(o.card.y + origin.y).toBeGreaterThanOrEqual(220);
-    if (o.spec.side === 'left') expect(o.card.y + card.h).toBeLessThanOrEqual(inset.y);
-  }
+  const out = layoutCallouts(CALLOUTS, projected, layer, { card, avoid });
+  for (const o of out) expect(o.fits, o.spec.title).toBe(true);
+  expectClear(out, card, avoid);
+});
+
+test('a part card under the cluster leaves the right column room for one card: the others drop, nothing overlaps', () => {
+  const layer = { w: 1100, h: 606 };
+  const avoid: Rect[] = [
+    { x: 0, y: 0, w: layer.w, h: 48 },
+    { x: layer.w - 300, y: 0, w: 300, h: 196 },   // cluster
+    { x: layer.w - 300, y: 204, w: 300, h: 250 }, // part card under it
+  ];
+  const projected = Object.fromEntries(CALLOUTS.map((c) => [c.anchor, { x: 550, y: 300, visible: true }]));
+  const card = { w: 220, h: 72 };
+  const out = layoutCallouts(CALLOUTS, projected, layer, { card, avoid });
+  expect(out.filter((o) => o.spec.side === 'right').map((o) => o.fits)).toEqual([true, false, false]);
+  expect(out.filter((o) => o.spec.side === 'left').every((o) => o.fits)).toBe(true);
+  expectClear(out, card, avoid);
+});
+
+test('a card never sits on its own anchor: it moves to a free slot, or drops when there is none', () => {
+  const card = { w: 220, h: 72 };
+  const size = { w: 1000, h: 700 };
+  const away = Object.fromEntries(CALLOUTS.map((c) => [c.anchor, { x: 500, y: 350, visible: true }]));
+  const before = layoutCallouts(CALLOUTS, away, size, { card }).map((o) => ({ ...o.card }));
+  // the clutch's anchor right under the clutch card's slot
+  const on = { ...away, clutch: { x: before[0].x + 60, y: before[0].y + 30, visible: true } };
+  const out = layoutCallouts(CALLOUTS, on, size, { card });
+  const inside = (o: PlacedCallout, p: { x: number; y: number }) =>
+    p.x >= o.card.x && p.x <= o.card.x + card.w && p.y >= o.card.y && p.y <= o.card.y + card.h;
+  expect(out[0].fits).toBe(true);
+  expect(inside(out[0], on.clutch)).toBe(false);
+  expectClear(out, card, []);
+  // the others keep their slots
+  for (let i = 1; i < out.length; i++) expect(out[i].card).toEqual(before[i]);
+  // a column with no spare slot: the card drops rather than cover its anchor
+  const tight = { w: 1000, h: 3 * 84 };
+  const t0 = layoutCallouts(CALLOUTS, away, tight, { card }).map((o) => ({ ...o.card }));
+  const onTight = { ...away, clutch: { x: t0[0].x + 60, y: t0[0].y + 30, visible: true } };
+  const t = layoutCallouts(CALLOUTS, onTight, tight, { card });
+  expect(t[0].fits).toBe(false);
+  expect(t[1].fits && t[2].fits).toBe(true);
 });

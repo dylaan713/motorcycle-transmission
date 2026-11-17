@@ -8,6 +8,9 @@ export interface TorquePath { parts: PartId[]; torque: number; slipping: boolean
 /** No part carrying torque. */
 export const EMPTY_PATH: TorquePath = Object.freeze({ parts: [], torque: 0, slipping: false, reach: 'none' }) as TorquePath;
 
+/** The path the views draw: `path` with torque flow on, nothing with it off (both views alike). */
+export const shownPath = (path: TorquePath, torqueFlow: boolean): TorquePath => (torqueFlow ? path : EMPTY_PATH);
+
 const MIN_TORQUE = 0.5; // N·m; below this nothing is shown as carrying torque
 const MIN_SLIP = 0.5; // rad/s
 const TO_INPUT: readonly PartId[] = [
