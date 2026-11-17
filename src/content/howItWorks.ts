@@ -1,6 +1,6 @@
 import { PARAMS } from '../sim/params';
 import {
-  finalRatio, gearRatio, overallRatio, primaryRatio, reflectedVehicleInertia, roadSpeed,
+  finalRatio, freeShaftOf, gearRatio, overallRatio, primaryRatio, reflectedVehicleInertia, roadSpeed,
 } from '../sim/kinematics';
 import { clutchCapacityMax } from '../sim/clutch';
 import { deg, rpm } from '../sim/units';
@@ -122,7 +122,7 @@ function parts(): Section {
 }
 
 function constantMesh(): Section {
-  const free = (shaft: 'input' | 'output'): string => GEARS.filter((g) => (g <= 4 ? 'output' : 'input') === shaft)
+  const free = (shaft: 'input' | 'output'): string => GEARS.filter((g) => freeShaftOf(g) === shaft)
     .map((g) => ORDINAL[g].word).join(', ');
   return {
     id: 'constant-mesh',
@@ -146,11 +146,11 @@ function oneShift(): Section {
         kind: 'list',
         ordered: true,
         items: [
-          `The rider lifts the gear pedal. The pedal turns the shift shaft, and its pawl, a hook that pushes one way only, turns the shift drum one step: from ${fmt(D[2])}° to ${fmt(D[3])}°.`,
+          `The rider lifts the gear pedal. The pedal turns the shift shaft and the arm on it. The arm carries two pawls, hooks that push one way only, one for each direction; the up pawl pushes one of the shift pins on the end of the shift drum and turns the drum one step: from ${fmt(D[2])}° to ${fmt(D[3])}°.`,
           'A sprung roller, the detent arm, is pushed over the hump on the star wheel and drops into the next notch, which holds the drum there.',
           `Each shift fork rides in a groove around the drum. Where a groove bends, its fork is pushed sideways. On this step two grooves bend: ${PARTS[forkOf(out)].name} moves back to the middle and ${PARTS[forkOf(into)].name} moves out.`,
           'The first fork slides its gear away from second, pulling its dogs out of their slots. A dog carrying load is pinched by friction and will not come out, which is why the throttle is closed or the clutch pulled for a shift.',
-          'The second fork slides its gear toward third. Its dogs meet the dogs on the third gear. If they line up with the slots they drop straight in. If they meet face to face they wait, pressed together, until the two parts turn a little against each other and a slot comes round.',
+          'The second fork slides its gear toward third. Its dogs meet the dogs on the third gear. If they line up with the slots they drop straight in. If they meet face to face they wait, pressed together, until the two parts turn a little against each other and a slot comes around.',
           'When the dogs drop in, third gear is locked to its shaft. The shaft speeds jump to the new ratio in that instant. When the lever comes out, the clutch slips for a moment until the engine is turning at the speed the new gear needs, then grips.',
         ],
       },
@@ -164,7 +164,7 @@ function clutch(): Section {
     id: 'clutch',
     heading: 'The clutch',
     blocks: [
-      { kind: 'p', text: 'The clutch is a stack of plates. Friction plates turn with the clutch basket, which the engine drives. Steel plates turn with the clutch hub, which turns the input shaft. Springs squeeze the stack through the pressure plate, and friction between the plates carries the drive. Pulling the lever lifts the pressure plate and lets the stack go.' },
+      { kind: 'p', text: 'The clutch is a stack of plates. Friction plates turn with the clutch basket, which the engine drives. Steel plates turn with the clutch hub, which turns the input shaft. Springs squeeze the stack through the pressure plate, and friction between the plates carries the drive. Pulling the lever lifts the pressure plate and lets the stack go: the lever pulls a cable, the cable turns the release arm, and the arm pushes a pushrod that runs through the hollow input shaft and lifts the plate.' },
       {
         kind: 'formula',
         label: 'Torque capacity',
@@ -175,7 +175,7 @@ function clutch(): Section {
         kind: 'formula',
         label: 'The lever',
         expr: `T_cap = T_max × (1 − L ÷ ${C.leverFullRelease}), and 0 once L ≥ ${C.leverFullRelease}`,
-        where: `T_cap is the capacity right now (N·m); L is lever travel, from 0 released to 1 fully pulled, so the clutch carries nothing once the lever is ${fmt(C.leverFullRelease * 100)}% of the way in.`,
+        where: `T_cap is the capacity right now (N·m); T_max is the full capacity worked out above (N·m); L is lever travel, from 0 released to 1 fully pulled, so the clutch carries nothing once the lever is ${fmt(C.leverFullRelease * 100)}% of the way in.`,
       },
       {
         kind: 'list',
@@ -217,7 +217,7 @@ function computes(): Section {
         kind: 'formula',
         label: 'Clutch stick and slip',
         expr: 'locked if |Δω| < 0.05 rad/s and |T_hold| ≤ T_cap; otherwise T = sign(Δω) × T_cap + T_drag',
-        where: 'Δω is the slip speed, basket minus hub (rad/s); T_hold is the torque that would keep both sides turning together this step (N·m); T_cap is the capacity (N·m); a locked clutch moves the engine and gearbox as one body, and a slip that reverses within a step sticks only if T_hold fits within T_cap.',
+        where: 'T is the torque the clutch passes from basket to hub (N·m); Δω is the slip speed, basket minus hub (rad/s); T_hold is the torque that would keep both sides turning together this step (N·m); T_cap is the capacity (N·m); T_drag is the oil drag above (N·m); a locked clutch carries T_hold and moves the engine and gearbox as one body, and a slip that reverses within a step sticks only if T_hold fits within T_cap.',
       },
       {
         kind: 'formula',
@@ -229,7 +229,7 @@ function computes(): Section {
         kind: 'formula',
         label: 'Dogs',
         expr: `aligned if (φ mod ${fmt(360 / G.count)}°) < ${G.windowDeg}°; on engaging, ω_out′ = (g·J_in·ω_in + J_out·ω_out) ÷ (g²·J_in + J_out) and ω_in′ = g·ω_out′`,
-        where: `φ is the angle of the dogs against the slots (degrees); ${G.count} dogs share the circle and can enter over ${G.windowDeg}° of every ${fmt(360 / G.count)}°; J_in and J_out are the inertias of the input side and of the bike as seen at the output shaft (kg·m²); the speed jump keeps their angular momentum the same.`,
+        where: `φ is the angle of the dogs against the slots (degrees); g is the ratio of the pair being engaged; ω_in and ω_out are the input and output shaft speeds just before engaging (rad/s), and a prime (′) marks the speeds just after; ${G.count} dogs share the circle and can enter over ${G.windowDeg}° of every ${fmt(360 / G.count)}°; J_in and J_out are the inertias of the input side and of the bike as seen at the output shaft (kg·m²); the speed jump keeps their angular momentum the same.`,
       },
       {
         kind: 'formula',
@@ -241,13 +241,13 @@ function computes(): Section {
         kind: 'formula',
         label: 'Shift drum',
         expr: 'J_d × dω/dt = T_pawl + T_detent − c × ω − friction',
-        where: `J_d is the drum inertia (kg·m²); ω its speed (rad/s); T_pawl is the push from the pedal, up to ${D.footTorqueMax} N·m; T_detent = −P × sin(2π × offset ÷ spacing) pulls it into the nearest notch, with P = ${D.detentPeak} N·m (${D.neutralDetentPeak} N·m at neutral); c = ${D.damping} N·m·s/rad is damping; friction is ${D.friction} N·m sliding and ${D.staticFriction} N·m at rest.`,
+        where: `J_d is the drum inertia (kg·m²); ω its speed (rad/s); T_pawl is the push from the pedal, up to ${D.footTorqueMax} N·m; T_detent = −P × sin(2π × offset ÷ spacing) pulls it into the nearest notch, where offset is the drum's angle past that notch and spacing is the distance between notches (${fmt(D.detents.N - D.detents[1])}° between first, neutral and second, ${fmt(D.detents[3] - D.detents[2])}° above second), with P = ${D.detentPeak} N·m (${D.neutralDetentPeak} N·m at neutral); c = ${D.damping} N·m·s/rad is damping; friction is ${D.friction} N·m sliding and ${D.staticFriction} N·m at rest.`,
       },
       {
         kind: 'formula',
         label: 'The bike',
         expr: 'J_veh × dω_out/dt = T_drive − (T_brake + T_roll + T_air) ÷ final ratio',
-        where: `J_veh = (m × r² + J_wheels) ÷ final ratio² is the bike's inertia at the output shaft (kg·m²), with m = ${PARAMS.mass} kg for bike and rider and r = ${PARAMS.wheelRadius} m the wheel radius; T_roll = C_rr × m × g × r with C_rr = ${PARAMS.crr}; T_air = ½ × ρ × CdA × v² × r with CdA = ${PARAMS.cdA} m²; v is road speed (m/s).`,
+        where: `ω_out is the output shaft speed (rad/s); T_drive is the torque the gearbox delivers to the output shaft through the locked gear, zero in neutral (N·m); final ratio = ${PARAMS.final.rear} ÷ ${PARAMS.final.front} = ${finalRatio} is the chain drive's ratio, rear sprocket teeth over front; J_veh = (m × r² + J_wheels) ÷ final ratio² is the bike's inertia at the output shaft (kg·m²), with m = ${PARAMS.mass} kg for bike and rider, r = ${PARAMS.wheelRadius} m the wheel radius and J_wheels = ${fmt(PARAMS.wheelInertia, 1)} kg·m² for both wheels; T_brake is the rear brake torque at the wheel, up to ${PARAMS.brakeMaxTorque} N·m; T_roll = C_rr × m × g × r is rolling resistance at the wheel, with C_rr = ${PARAMS.crr} and g = ${PARAMS.g} m/s² gravity; T_air = ½ × ρ × CdA × v² × r is air resistance at the wheel, with ρ = ${PARAMS.airDensity} kg/m³ the air density and CdA = ${PARAMS.cdA} m²; v is road speed (m/s). In gear the code solves this together with the input shaft, as one body seen at the input shaft.`,
       },
     ],
   };
@@ -271,7 +271,7 @@ function simplified(): Section {
           'The shift drum is a force balance with a detent, friction, static friction and damping. Those values were tuned to make shifts behave correctly, not measured.',
           'A shift fork can lag its groove slightly in the simulation, but it is drawn rigid.',
           'The drawn pressure-plate lift is exaggerated, and the dogs and their travel are drawn at proportions chosen for clarity.',
-          'The crankshaft is a stub, and bearings, circlips and thrust washers are left out of the 3D drawing, apart from the bush the clutch basket runs on.',
+          'The crankshaft is a stub, and bearings, snap rings and thrust washers are left out of the 3D drawing, apart from the bushing the clutch basket runs on.',
         ],
       },
     ],
@@ -301,23 +301,24 @@ function numbers(): Section {
     ['Clutch friction coefficient', `${C.mu}`, REP],
     ['Clutch spring clamp force', `${fmt(C.clampForce)} N`, REP],
     ['Clutch mean radius', `${C.meanRadius} m`, REP],
+    ['Oil drag in the clutch', `${C.dragCoeff} N·m per rad/s, at most ${C.dragMax} N·m`, REP],
     ['Clutch capacity', `${clutchCapacityMax.toFixed(0)} N·m`, DER],
     ['Dogs per ring, entry window', `${PARAMS.dogs.count}, ${PARAMS.dogs.windowDeg}° of ${fmt(360 / PARAMS.dogs.count)}°`, REP],
     ['Drum steps', `${fmt(D.detents.N - D.detents[1])}° to neutral, ${fmt(D.detents[3] - D.detents[2])}° between gears`, REP],
-    ['Idle speed and idle control', `${fmt(E.idleRpm)} rpm, up to ${E.idleMaxThrottle} throttle`, 'Tuned so the modeled engine idles steadily at its idle speed'],
+    ['Idle speed', `${fmt(E.idleRpm)} rpm`, REP],
+    ['Idle throttle authority', `up to ${E.idleMaxThrottle} throttle`, 'Tuned so the modeled engine idles steadily, according to the build notes; the code history shows this value unchanged since it was first written'],
     ['Over-rev drag', `${E.overRevDrag} N·m per rpm above the limiter`, 'Tuned so the modeled engine resists being forced past the limiter on a missed downshift'],
     ['Drum sliding friction', `${D.friction} N·m`, 'Tuned so the modeled shift behaves correctly: lowered from 0.25 so the drum settles fully into each notch'],
     ['Drum static friction', `${D.staticFriction} N·m`, 'Tuned so the modeled shift behaves correctly: raised from 0.25 so a weak stroke can leave the drum resting between gears'],
     ['Detent strength', `${D.detentPeak} N·m, ${D.neutralDetentPeak} N·m at neutral`, 'Tuned so the modeled shift behaves correctly: raised from 2.5 and 0.8 so the drum returns to its notch and neutral is easy but not too easy to find'],
     ['Drum damping', `${D.damping} N·m·s/rad`, 'Tuned so the modeled shift behaves correctly: added before the build so the drum does not overshoot each notch, and not changed since'],
-    ['Oil drag in the clutch', `${C.dragCoeff} N·m per rad/s, at most ${C.dragMax} N·m`, 'Tuned so the modeled clutch drags the input shaft the way a wet clutch does: set when the model was planned and not changed since'],
     ['Demo rider shift points and timings', 'in the demo rider’s code', 'Tuned so the modeled demo ride shifts like a competent rider'],
   ];
   return {
     id: 'numbers',
     heading: 'Where the numbers come from',
     blocks: [
-      { kind: 'p', text: 'Every number lives in one parameter file. Each has one of three sources: chosen as representative, derived from others, or tuned so the model behaves correctly.' },
+      { kind: 'p', text: 'Every number except the demo rider’s settings lives in one parameter file. Each has one of three sources: chosen as representative, derived from others, or tuned so the model behaves correctly.' },
       { kind: 'table', head: ['Parameter', 'Value', 'Source'], rows },
       { kind: 'p', text: 'None of these are measurements of a real gearbox, and the model has not been checked by someone who rebuilds them.' },
     ],
@@ -334,7 +335,7 @@ function checked(): Section {
         kind: 'list',
         items: [
           'Shaft speeds match the tooth-count ratios exactly in every gear.',
-          'Road speed at a given engine speed matches the hand calculation in each gear.',
+          'Road speed at 10,000 rpm matches the hand calculation in first and sixth gear.',
           'A locked clutch has zero slip, and a slipping clutch passes exactly its capacity plus drag.',
           'Never more than one gear is locked at once, through a minute of random control inputs.',
           'Angular momentum is the same just before and just after a dog engagement.',

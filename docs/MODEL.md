@@ -29,8 +29,9 @@ design document under "Builder's calls".
 simulation computes it from forces and inertias rather than playing animations. The numbers were
 chosen to be representative of a middleweight sport bike; they are not measurements of any real
 gearbox. Some values were tuned so the modeled shift behaves correctly: drum sliding friction,
-drum static friction, detent strength, drum damping, the idle control, the over-rev drag and the
-demo rider's settings (section 5 gives each one's history). The model's tests were written by the
+drum static friction, detent strength, drum damping, the idle control's throttle limit (tuned
+according to the build notes, though git shows no change), the over-rev drag and the demo rider's
+settings (section 5 gives each one's history). The model's tests were written by the
 same AI agent that wrote the model, and reviewed by other AI agents. No person who rebuilds
 gearboxes, and no measured data, has checked it. So the tests show that the model does what it
 was designed to do; they do not show that it matches a real motorcycle. Validating it would take
@@ -48,7 +49,9 @@ to the rear wheel, changing speed along the way.
 2. **Clutch.** The basket carries friction plates; the clutch hub carries steel plates; the two
    kinds alternate in a stack. Springs squeeze the stack through the pressure plate, and friction
    between the plates carries the drive into the hub. Pulling the lever lifts the pressure plate
-   and lets the stack go. The plates run in oil, which is what "wet" means.
+   and lets the stack go: the lever pulls a cable, the cable turns the release arm, and the arm
+   pushes a pushrod that runs through the hollow input shaft and lifts the plate. The plates run
+   in oil, which is what "wet" means.
 3. **Input shaft.** The hub turns the gearbox input shaft, which carries one gear of each of six
    gear pairs.
 4. **Gear pairs.** Each pair has one gear on the input shaft and one on the output shaft, and the
@@ -61,13 +64,16 @@ to the rear wheel, changing speed along the way.
    that pair carry the drive. In this gearbox the fifth gear on the output shaft is a sliding gear
    that locks first or third; the sixth gear on the output shaft locks fourth or second; and third
    and fourth on the input shaft are one sliding piece that locks fifth or sixth.
-6. **Shift mechanism.** The gear pedal turns the shift shaft. A pawl on it, a hook that pushes one
-   way only, turns the shift drum one step per stroke. Three grooves run around the drum, and a
+6. **Shift mechanism.** The gear pedal turns the shift shaft and the arm fixed to it. The arm
+   carries two pawls, hooks that push one way only: one for changing up, one for changing down.
+   Six shift pins stand on the drum's end, one per position, and on each stroke one of the pawls
+   pushes a pin and turns the shift drum one step. (In the simulation this linkage is a single
+   spring-like push; section 4 describes it.) Three grooves run around the drum, and a
    fork rides in each; where a groove bends, its fork slides its sliding gear. A sprung roller
    (the detent arm) drops into notches on a star wheel on the drum's end and holds the drum at
    each position.
 7. **Output shaft and final drive.** The output shaft turns the front sprocket
-   (16<!-- param:final.front --> teeth), which pulls the chain round the rear sprocket
+   (16<!-- param:final.front --> teeth), which pulls the chain around the rear sprocket
    (45<!-- param:final.rear --> teeth) on the rear wheel: another slowing of
    2.8125<!-- param:ratio.final --> to 1.
 
@@ -146,7 +152,7 @@ throttle).
 
 A change from second to third, with the clutch lever pulled:
 
-1. The rider lifts the gear pedal. The shift shaft's pawl turns the shift drum from
+1. The rider lifts the gear pedal. The shift arm's up pawl pushes a pin on the drum's end and turns the shift drum from
    60°<!-- param:drum.detents.2 --> toward 120°<!-- param:drum.detents.3 -->. A full stroke is
    62°<!-- param:drum.strokeDeg --> of drum travel, but the pawl stops a stroke just past the next
    gear, so one stroke can never skip a gear.
@@ -159,14 +165,16 @@ A change from second to third, with the clutch lever pulled:
    drum then stops, as if solid. That is why the rider closes the throttle or pulls the clutch.
 5. Fork A slides the fifth-gear sliding gear toward third. Its dogs meet the dogs on third. If
    they line up with the slots they drop straight in. If they meet face to face they wait, pressed
-   together, until the two parts turn a little against each other and a slot comes round.
+   together, until the two parts turn a little against each other and a slot comes around.
 6. When the dogs drop in, third gear is locked to the output shaft. In that instant the input
    shaft and the output shaft jump to speeds that fit the new ratio.
 7. As the rider lets the lever out, the clutch slips until the engine slows to the speed the new
    gear needs, then locks.
 
-Neutral is reached with a half stroke from first: from neutral, the stroke is
-32°<!-- param:drum.strokeFromNeutralDeg --> instead of 62°<!-- param:drum.strokeDeg -->.
+Neutral is reached from first with a half stroke: about half of the full
+62°<!-- param:drum.strokeDeg --> stroke carries the drum to neutral's notch. A stroke that starts
+at neutral is shorter, 32°<!-- param:drum.strokeFromNeutralDeg -->, because neutral is only half a
+step from first and from second.
 
 ## 4. The simulation
 
@@ -461,7 +469,7 @@ so the modeled behavior comes out right, with its history from git and the build
 | `engine.torqueCurve` | 30<!-- param:engine.torqueCurve.0.1 --> at 1,000<!-- param:engine.torqueCurve.0.0 -->; 42<!-- param:engine.torqueCurve.1.1 --> at 4,000<!-- param:engine.torqueCurve.1.0 -->; 55<!-- param:engine.torqueCurve.2.1 --> at 8,000<!-- param:engine.torqueCurve.2.0 -->; 60<!-- param:engine.torqueCurve.3.1 --> at 11,000<!-- param:engine.torqueCurve.3.0 -->; 56<!-- param:engine.torqueCurve.4.1 --> at 13,500<!-- param:engine.torqueCurve.4.0 -->; 48<!-- param:engine.torqueCurve.5.1 --> at 15,000<!-- param:engine.torqueCurve.5.0 --> | N·m at rpm | Chosen as representative |
 | `engine.closedThrottle` | −4<!-- param:engine.closedThrottle.base --> and −0.0012<!-- param:engine.closedThrottle.perRpm --> | N·m, N·m per rpm | Chosen as representative |
 | `engine.idleRpm` | 1,300<!-- param:engine.idleRpm --> | rpm | Chosen as representative |
-| `engine.idleMaxThrottle` | 0.4<!-- param:engine.idleMaxThrottle --> | throttle, 0 to 1 | Tuned. HANDOFF.md says it was raised from 0.15 to 0.4, but git shows 0.4<!-- param:engine.idleMaxThrottle --> from the very first commit of the plan, and no reason is recorded. The feedforward added in commit e6044f4 is what makes idle settle at 1,300 rpm<!-- param:engine.idleRpm -->; before it, idle settled at 1,187 rpm |
+| `engine.idleMaxThrottle` | 0.4<!-- param:engine.idleMaxThrottle --> | throttle, 0 to 1 | Tuned according to HANDOFF.md; git shows no change. HANDOFF.md says it was raised from 0.15 to 0.4, but git shows 0.4<!-- param:engine.idleMaxThrottle --> from the very first commit of the plan, and no reason is recorded. The feedforward added in commit e6044f4 is what makes idle settle at 1,300 rpm<!-- param:engine.idleRpm -->; before it, idle settled at 1,187 rpm |
 | `engine.limiterRpm` | 15,000<!-- param:engine.limiterRpm --> | rpm | Chosen as representative |
 | `engine.overRevDrag` | 0.1<!-- param:engine.overRevDrag --> | N·m per rpm | Tuned: added in e6044f4 (there was none before), because a clutchless downshift from sixth to first drove the engine to 18,981 rpm against the limiter; with it the peak is about 15,700 rpm |
 | `engine.stallRpm` | 400<!-- param:engine.stallRpm --> | rpm | Chosen as representative |
@@ -595,11 +603,11 @@ or what the page claims.
   from their partners; fixed in 135e5ab with a minimum overlap rule tested at every position.
 - **The mirrored bike.** An earlier ruling fixed the bike appearing to run backward by mirroring
   the layout, which put the chain and gear pedal on the bike's right and the clutch on the left,
-  the opposite of nearly every motorcycle. The stage 3 review caught it, and the stage 3 fix wave
-  restores the chain and pedal to the left, the clutch to the right, and forward rotation.
+  the opposite of nearly every motorcycle. A later review caught it, and the chain and pedal were
+  restored to the left, the clutch to the right, with forward rotation (3bfbd03).
 - **Missing mechanism.** The same review found no clutch release mechanism, a pawl with nothing to
-  push, and a clutch basket floating on the shaft. The stage 3 fix wave adds the release rod and
-  arm, the pins on the drum, and the bush the basket runs on.
+  push, and a clutch basket floating on the shaft. The release rod and arm, the pins on the drum
+  with two pawls to push them, and the bushing the basket runs on were added (acb4f97).
 - **Lesson copy that said wrong things.** For example "at each gear position only one groove is
   bent" (the bends sit between positions, and one change moves two forks) and "the input shaft
   loses speed only slowly" (it settles at most of the basket's speed). Fixed in 0b8d3ec.
@@ -621,7 +629,7 @@ does not show. None of the reviews involved a person who works on gearboxes.
   neutrals come from the detent profile, the linkage's lost motion and the dogs; here they come
   from one tuned friction band. The margin that keeps neutral the weakest notch is thin, about 5%.
 - **Instant engagement.** Dogs lock in one step with an instant speed jump. There is no dog bounce,
-  no impact force, no back-cut, and the engine's inertia joins only through the clutch afterwards.
+  no impact force, no back-cut, and the engine's inertia joins only through the clutch afterward.
 - **No limit on engagement speed.** Aligned dogs engage at any relative speed.
 - **The clutch.** One friction coefficient, a straight-line lever, no heat. Real clutches grip a
   little harder at rest than sliding, which matters for judder and for how a launch feels.
@@ -632,8 +640,8 @@ does not show. None of the reviews involved a person who works on gearboxes.
   the run every 5 ms.
 - **The drawing.** Fork compliance is in the simulation but not drawn; the pressure-plate lift is
   exaggerated; dogs and their travel (4 mm) are drawn shallower than real ones for clarity; the
-  crankshaft is a stub; the 3D model draws no bearings, circlips or thrust washers apart from the
-  basket bush (the flat schematic draws a bearing where each shaft passes the case wall and the
+  crankshaft is a stub; the 3D model draws no bearings, snap rings or thrust washers apart from the
+  basket bushing (the flat schematic draws a bearing where each shaft passes the case wall and the
   basket's needle bearing); the chain advances one link per sprocket tooth; the gear teeth are
   standard involute teeth with no profile shift, so the 13<!-- param:gears.1.0 -->-tooth first gear would foul its partner
   by a few micrometers.
@@ -714,7 +722,7 @@ load. Then I would compare a recorded shift with the model's.
 ### What is the biggest simplification?
 
 Dog engagement. It is an instant, momentum-keeping speed jump with no impact, no bounce and no
-limit on the speed difference, and the engine only joins in through the clutch afterwards. Real
+limit on the speed difference, and the engine only joins in through the clutch afterward. Real
 engagement is a short, violent event, and that is where gearboxes get damaged.
 
 ### Why are the dogs given a 16°<!-- param:dogs.windowDeg --> window?
@@ -722,6 +730,15 @@ engagement is a short, violent event, and that is where gearboxes get damaged.
 With five dogs, one every 72°<!-- param:dogs.pitchDeg -->, the dog itself and the slot's lug take up most of the circle. The
 16°<!-- param:dogs.windowDeg --> is the free play left over: in the drawing, 72°<!-- param:dogs.pitchDeg --> minus two 28° dogs. A dog can only drop in
 when it is within that window. It was chosen as representative, not taken from a real part.
+
+### What breaks if the dogs had no backlash?
+
+Engagement. The 16°<!-- param:dogs.windowDeg --> window is the backlash: the free play between a
+dog and the slot it enters. With no window, the alignment test (the dog's angle within the window
+of each 72°<!-- param:dogs.pitchDeg --> pitch) could never pass, so a sliding gear would sit
+blocked against the dogs forever and no gear would go in. A real gearbox is the same: a dog exactly
+as wide as its slot could only enter if the two parts stood perfectly still and perfectly lined up,
+which is why real dogs have generous play.
 
 ### What did the reviews get wrong or catch?
 
@@ -746,7 +763,7 @@ dogs, not by sliding gears into mesh.
 
 ### Why does first gear clunk from neutral?
 
-With the clutch pulled, oil drag keeps the input shaft spinning at most of the engine's speed. The
+With the clutch pulled, oil drag keeps the input shaft spinning at most of the clutch basket's speed. The
 bike is standing still, so when the dogs for first drop in, they stop that shaft dead. In the
 model the input shaft goes from spinning to nearly still in under 50 ms.
 
@@ -778,9 +795,8 @@ per second of simulated time, which is light enough for a laptop or a phone.
 - **Angular momentum**: How much turning motion a spinning part carries: its inertia times its speed of rotation.
 - **Backlash**: The small free play between two parts that drive each other, such as a dog and the slot it sits in.
 - **Bearing**: A part that lets a shaft turn smoothly inside a housing or another part, usually with rollers or balls.
-- **Bush**: A plain sleeve that a turning part runs on, used where a bearing with rollers is not needed.
+- **Bushing**: A plain sleeve that a turning part runs on, used where a bearing with rollers is not needed.
 - **Chain**: The loop of steel links that carries drive from the front sprocket to the rear sprocket.
-- **Circlip**: A springy split ring that sits in a groove on a shaft to stop a part sliding off it.
 - **Clamp force**: How hard the springs squeeze the clutch plates together, in newtons.
 - **Clunk**: The noise and jolt when first gear goes in from neutral and the dogs stop the still-spinning input shaft dead.
 - **Clutch basket**: The outer drum of the clutch, turned by the engine through the primary drive, with slots that drive the friction plates.
@@ -820,13 +836,14 @@ per second of simulated time, which is light enough for a laptop or a phone.
 - **N·m**: Newton meters, the unit of turning force: one newton pushing at the end of a one-meter arm.
 - **Neutral**: The gearbox position in which no gear pair is locked, so the engine can run while the rear wheel stands still.
 - **Notch**: A dip on the star wheel that the detent roller drops into, one for each gear and one for neutral.
-- **Output shaft**: The gearbox shaft that carries the second gear of every pair and turns the front sprocket.
+- **Output shaft**: The gearbox shaft that carries the other gear of every pair and turns the front sprocket.
 - **Pawl**: A hooked arm that pushes a wheel or pin around in one direction only, here turning the shift drum one step per stroke.
 - **Pedal stroke**: One movement of the gear pedal up or down and back, which turns the shift drum by at most one step.
 - **Piston**: The part that combustion pushes down inside an engine cylinder; this model does not include it.
 - **Pressure plate**: The plate the clutch springs press on to squeeze the plate stack, lifted off it when the lever is pulled.
 - **Primary drive**: The pair of gears that carries drive from the crankshaft to the clutch basket and slows it down on the way.
 - **Profile shift**: A small change to a gear tooth shape, used on real gears with few teeth so they do not foul their partner.
+- **Pushrod**: A thin rod that passes a push along its length, here from the clutch release arm through the hollow input shaft to the pressure plate.
 - **rad/s**: Radians per second, the unit of turning speed used inside the simulation; one turn is 2π radians.
 - **Ratchet**: A mechanism that lets motion through in one direction and slips back freely in the other.
 - **Rev limiter**: An engine control that cuts power above a set engine speed so the engine is not damaged.
@@ -837,9 +854,11 @@ per second of simulated time, which is light enough for a laptop or a phone.
 - **Sequential gearbox**: A gearbox whose gears can only be selected in order, one step up or down at a time.
 - **Shift drum**: A grooved cylinder whose angle sets where every fork sits, so each of its positions selects one gear.
 - **Shift fork**: An arm that rides in a groove of the drum and slides a sliding gear along its shaft.
-- **Shift shaft**: The shaft turned by the gear pedal, whose pawl steps the drum on.
+- **Shift pin**: One of the six short pins standing on the end of the shift drum, which the pawls push to turn the drum one step at a time.
+- **Shift shaft**: The shaft turned by the gear pedal, whose arm carries the two pawls that step the drum on.
 - **Sliding friction**: The friction between surfaces that are already moving past each other.
 - **Sliding gear**: A gear splined to its shaft so it turns with the shaft but can slide along it, carrying dogs on its sides.
+- **Snap ring**: A springy split ring that sits in a groove on a shaft to stop a part sliding off it.
 - **Spline**: A set of matching ridges and slots that makes two parts turn together while letting one slide along the other.
 - **Sprocket**: A toothed wheel that drives or is driven by a chain.
 - **Stall**: An engine stopping because a load slowed it below the speed at which it can keep running.

@@ -73,10 +73,10 @@ test('no hype and no brand names anywhere in the content or the lessons', () => 
 
 const BRANDS = /\b(honda|yamaha|kawasaki|suzuki|ducati|triumph|bmw|ktm|aprilia|harley|davidson|agusta|husqvarna|benelli|enfield|cbr|gsx|ninja|daytona|panigale|hayabusa|yzf|zx-?\d+r?|r1|r6|mt-?\d+)\b/i;
 const HYPE = /\b(revolutionary|cutting-edge|seamless|state-of-the-art|powerful|world-class|stunning|simply)\b/i;
-const BRITISH = /\b(tyres?|centre[sd]?|colours?|behaviours?|modelled|modelling|travelled|metres?|neighbour\w*|analys(e|ing)|optimis\w+|recognis\w+|labelled|favour\w*|grey|programme|realis(e|ed))\b/i;
+const BRITISH = /\b(tyres?|centre[sd]?|colours?|behaviours?|modelled|modelling|travelled|metres?|neighbour\w*|analys(e|ing)|optimis\w+|recognis\w+|labelled|favour\w*|grey|programme|realis(e|ed)|afterwards|bush(es)?|circlips?|comes? round|round (the|a|an|it|to))\b/i;
 
-test('no brands, hype or British spellings in the content or the model document', () => {
-  for (const [name, text] of [['content', contentText()], ['MODEL.md', MODEL]] as const) {
+test('no brands, hype or British spellings in the content, the lessons, the part roles or the model document', () => {
+  for (const [name, text] of [['content', contentText()], ['lessons', lessonText()], ['part roles', partText()], ['MODEL.md', MODEL]] as const) {
     expect(text, name).not.toMatch(BRANDS);
     expect(text, name).not.toMatch(HYPE);
     expect(text, name).not.toMatch(BRITISH);
@@ -125,6 +125,37 @@ test('every formula has a where line naming its symbols', () => {
     expect(f.where.length, f.label).toBeGreaterThan(20);
     expect(f.where.trim().endsWith('.'), f.label).toBe(true);
   }
+});
+
+test('every subscripted or Greek symbol in a formula is named in its where line', () => {
+  const formulas = howItWorks().flatMap((s) => s.blocks).filter((b) => b.kind === 'formula');
+  const SYMBOL = /[A-Z]_[a-z]+|Δω|[ωθφμρ](?:_[a-z]+)?/g;
+  const missing: string[] = [];
+  for (const f of formulas) {
+    for (const sym of new Set(f.expr.match(SYMBOL) ?? [])) {
+      if (!f.where.includes(sym)) missing.push(`${f.label}: ${sym}`);
+    }
+    if (f.expr.includes('′') && !f.where.includes('′')) missing.push(`${f.label}: ′`);
+  }
+  expect(missing).toEqual([]);
+});
+
+test('the site table and MODEL.md give the same source for oil drag and idle', () => {
+  const rows = (howItWorks()[7].blocks.find((b) => b.kind === 'table') as { rows: string[][] }).rows;
+  const site = (name: string): string => rows.find((r) => r[0] === name)![2];
+  const doc = (key: string): string => {
+    const row = MODEL.split('\n').find((l) => l.startsWith(`| \`${key}\` |`));
+    expect(row, key).toBeDefined();
+    return row!.split('|')[4].trim();
+  };
+  expect(site('Oil drag in the clutch')).toMatch(/^Chosen as representative/);
+  expect(doc('clutch.dragCoeff')).toMatch(/^Chosen as representative/);
+  expect(doc('clutch.dragMax')).toMatch(/^Chosen as representative/);
+  expect(site('Idle speed')).toMatch(/^Chosen as representative/);
+  expect(doc('engine.idleRpm')).toMatch(/^Chosen as representative/);
+  // the records disagree about the idle throttle limit: both places report that, neither resolves it
+  expect(site('Idle throttle authority')).toMatch(/^Tuned .*build notes.*unchanged/);
+  expect(doc('engine.idleMaxThrottle')).toMatch(/^Tuned according to HANDOFF\.md; git shows no change/);
 });
 
 // ---- Glossary ---------------------------------------------------------------------------------
@@ -177,8 +208,8 @@ const CANDIDATES: Array<[RegExp, string]> = [
   [/\bwet multi-plate\b|\bwet clutch\b/i, 'wet multi-plate clutch'], [/\btorque map\b/i, 'torque map'],
   [/\btorque path\b|\bdrive path\b/i, 'torque path'], [/\bstroke\b/i, 'pedal stroke'], [/\bgear pedal\b|\bpedal\b/i, 'gear pedal'],
   [/\bclutch lever\b|\blever\b/i, 'clutch lever'], [/\bclunk\b/i, 'clunk'], [/\bdetent strength\b/i, 'detent'],
-  [/\bfork compliance\b|\bcompliance\b/i, 'compliance'], [/\bbushe?s?\b/i, 'bush'], [/\bbearings?\b/i, 'bearing'],
-  [/\bcirclips?\b/i, 'circlip'], [/\bthrust washers?\b/i, 'thrust washer'], [/\bchain lash\b/i, 'chain lash'],
+  [/\bfork compliance\b|\bcompliance\b/i, 'compliance'], [/\bbush(es|ings?)?\b/i, 'bushing'], [/\bbearings?\b/i, 'bearing'],
+  [/\bcirclips?\b|\bsnap rings?\b/i, 'snap ring'], [/\bshift pins?\b/i, 'shift pin'], [/\bpushrod\b/i, 'pushrod'], [/\bthrust washers?\b/i, 'thrust washer'], [/\bchain lash\b/i, 'chain lash'],
   [/\bcoast-down\b/i, 'coast-down test'], [/\bcrankpin\b/i, 'crankpin'], [/\bpistons?\b/i, 'piston'],
   [/\blugs?\b/i, 'dog'], [/\bkeyed\b|\btabs?\b/i, 'spline'], [/\bmiddleweight\b/i, 'middleweight sport bike'],
 ];
