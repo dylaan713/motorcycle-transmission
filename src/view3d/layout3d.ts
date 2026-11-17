@@ -22,6 +22,8 @@ export const axisAt = (from: Axis, angle: number, distance: number): Axis =>
   ({ y: from.y + distance * Math.cos(angle), z: from.z + distance * Math.sin(angle) });
 export const directionOf = (from: Axis, to: Axis): number => Math.atan2(to.z - from.z, to.y - from.y);
 export const distanceOf = (a: Axis, b: Axis): number => Math.hypot(b.y - a.y, b.z - a.z);
+/** Tip radius of a gear of the gearbox. */
+export const tipRadius = (shaft: 'input' | 'output', g: GearNo): number => pitchRadius(shaft, g) + DIM.addendum * MODULE;
 
 // ---- Shafts -----------------------------------------------------------------------------------
 
@@ -103,19 +105,32 @@ export const FORK_RODS = { AB: FORK_ROD.A, C: FORK_ROD.C } as const;
 export const FORK_ROD_X = [-0.062, 0.062] as const;
 
 /**
- * Fifth and sixth on the output shaft carry their fork collar beside their teeth: teeth on
- * SLIDER_TOOTH_WIDTH of the face, then the collar groove (walled by the teeth) and a plain flange
- * to the face's other end. The partner gears on the input shaft keep the full face. A's collar is
- * on its -x side and B's on its +x side, so the two forks sit apart; the dogs on both faces are
- * unchanged (the flange's end face carries one ring).
+ * Fifth and sixth on the output shaft carry their fork collar beside their teeth. Along the face,
+ * from the collar-free end: a plain shoulder (carrying that face's dog ring), SLIDER_TOOTH_WIDTH of
+ * teeth, the collar groove (walled by the teeth) and a plain flange to the other face (carrying the
+ * other ring). The teeth sit off-centre toward the collar-free end by just enough that at either end
+ * of the slider's travel at least 70% of them stay in mesh with the full-width partner on the input
+ * shaft. A's collar is on its -x side and B's on its +x side, so the two forks sit apart.
  */
+export const SLIDER_SHOULDER_WIDTH = 0.002;
 export const SLIDER_TOOTH_WIDTH = 0.007;
-/** Collar groove: the fork's thickness with 0.2 mm clear of each wall. */
-export const COLLAR_GROOVE_WIDTH = DIM.fork.thickness + 0.0004;
+/**
+ * Fork claw thickness where it rides its groove. A and B ride the narrow collar groove with a
+ * thinned claw (their arms and bosses keep DIM.fork.thickness beyond FORK_THIN_REACH of the slider
+ * axis); C rides the 7 mm gap between third and fourth at full thickness.
+ */
+export const CLAW_THICKNESS: Record<SliderId, number> = { A: 0.0032, B: 0.0032, C: DIM.fork.thickness };
+/** Collar groove: the claw's thickness with 0.2 mm clear of each wall. */
+export const COLLAR_GROOVE_WIDTH = CLAW_THICKNESS.A + 0.0004;
 export const COLLAR_FLANGE_RADIUS = 0.027;
 export const COLLAR_SIDE: Record<'A' | 'B', 1 | -1> = { A: -1, B: 1 };
-/** Groove centre from the sliding gear's centre: the teeth, then half the groove. */
-const collarOffset = (s: 'A' | 'B'): number => COLLAR_SIDE[s] * (-FACE_WIDTH / 2 + SLIDER_TOOTH_WIDTH + COLLAR_GROOVE_WIDTH / 2);
+/** Stations along a collared gear's face in u = collar side × x: teeth start, teeth end (groove start), groove end. */
+const COLLAR_U = (() => {
+  const teeth = -FACE_WIDTH / 2 + SLIDER_SHOULDER_WIDTH;
+  return { teeth, groove: teeth + SLIDER_TOOTH_WIDTH, flange: teeth + SLIDER_TOOTH_WIDTH + COLLAR_GROOVE_WIDTH };
+})();
+/** Groove centre from the sliding gear's centre. */
+const collarOffset = (s: 'A' | 'B'): number => COLLAR_SIDE[s] * (COLLAR_U.groove + COLLAR_GROOVE_WIDTH / 2);
 /** Each fork's x at rest: the centre of its collar groove. */
 export const FORK_X: Record<SliderId, number> = {
   A: gearAxialPosition(5) + collarOffset('A'), B: gearAxialPosition(6) + collarOffset('B'),
@@ -132,6 +147,8 @@ export const COLLAR_RADIUS: Record<SliderId, number> = { A: 0.0235, B: 0.0235, C
 /** Fork reach: rod axis to the claw centre on the slider's axis. */
 export const forkReach = (s: SliderId): number => distanceOf(FORK_ROD[s], SLIDER_AXIS[s]);
 export const CLAW_OUTER = (s: SliderId): number => COLLAR_RADIUS[s] + FORK_CLAW_DEPTH;
+/** A and B forks are thin within this distance of the output axis: 3 mm beyond their own gears' tips. */
+export const FORK_THIN_REACH = Math.max(tipRadius('output', 5), tipRadius('output', 6)) + 0.003;
 
 /** Star wheel on the +x end of the drum, 1.5 mm clear of it. */
 export const STAR_X = DRUM_LENGTH / 2 + 0.0015 + DIM.starWheel.thickness / 2;
@@ -179,27 +196,36 @@ export const CARRIER = {
   x0: WHEEL_X + DIM.wheelParts.hubHalfWidth, x1: SPROCKET_X - SPROCKET_THICKNESS / 2,
 } as const;
 
-// ---- Gears ------------------------------------------------------------------------------------
 
-export const tipRadius = (shaft: 'input' | 'output', g: GearNo): number => pitchRadius(shaft, g) + DIM.addendum * MODULE;
+// ---- Gear solids ------------------------------------------------------------------------------
+
+const xSpan = (s: 'A' | 'B', u0: number, u1: number): [number, number] => {
+  const e = [COLLAR_SIDE[s] * u0, COLLAR_SIDE[s] * u1];
+  return [Math.min(...e), Math.max(...e)];
+};
 
 /** A gear's toothed x-range, relative to its centre. */
 export function toothedRange(shaft: 'input' | 'output', g: GearNo): [number, number] {
   const s = sliderOfGear(shaft, g);
   if (shaft !== 'output' || s === null || s === 'C') return [-FACE_WIDTH / 2, FACE_WIDTH / 2];
-  const ends = [-FACE_WIDTH / 2, -FACE_WIDTH / 2 + SLIDER_TOOTH_WIDTH].map((u) => COLLAR_SIDE[s] * u);
-  return [Math.min(...ends), Math.max(...ends)];
+  return xSpan(s, COLLAR_U.teeth, COLLAR_U.groove);
 }
 
-/** A gear's solid regions as cylinders about its axis (x relative to its centre): teeth, and a collar's groove hub and flange. */
+/**
+ * A gear's solid regions as cylinders about its axis (x relative to its centre): the teeth, and on
+ * a collared slider its shoulder, groove hub and flange.
+ */
 export function gearSolids(shaft: 'input' | 'output', g: GearNo): { x0: number; x1: number; r: number }[] {
   const [t0, t1] = toothedRange(shaft, g);
   const out = [{ x0: t0, x1: t1, r: tipRadius(shaft, g) }];
   const s = sliderOfGear(shaft, g);
   if (shaft === 'output' && s !== null && s !== 'C') {
-    const u = (a: number, b: number) => { const e = [COLLAR_SIDE[s] * a, COLLAR_SIDE[s] * b]; return { x0: Math.min(...e), x1: Math.max(...e) }; };
-    const u1 = -FACE_WIDTH / 2 + SLIDER_TOOTH_WIDTH, u2 = u1 + COLLAR_GROOVE_WIDTH;
-    out.push({ ...u(u1, u2), r: COLLAR_RADIUS[s] - COLLAR_CLEARANCE }, { ...u(u2, FACE_WIDTH / 2), r: COLLAR_FLANGE_RADIUS });
+    const cyl = (u0: number, u1: number, r: number) => { const [x0, x1] = xSpan(s, u0, u1); return { x0, x1, r }; };
+    out.push(
+      cyl(-FACE_WIDTH / 2, COLLAR_U.teeth, COLLAR_FLANGE_RADIUS),
+      cyl(COLLAR_U.groove, COLLAR_U.flange, COLLAR_RADIUS[s] - COLLAR_CLEARANCE),
+      cyl(COLLAR_U.flange, FACE_WIDTH / 2, COLLAR_FLANGE_RADIUS),
+    );
   }
   return out;
 }

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildAssembly } from '../../src/view3d/assembly';
 import type { TorquePath } from '../../src/model/torquePath';
 import type { Assembly } from '../../src/view3d/assembly';
-import { poseAssembly } from '../../src/view3d/pose';
+import { buildDetentTable, detentArmAngle, detentArmFromTable, poseAssembly } from '../../src/view3d/pose';
 import {
   DRUM_AXIS, FOLLOWER_OFFSETS, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, PEDAL_SWING, PRIMARY_PSI, REAR_PITCH_RADIUS, SLIDER_AXIS,
   clutchX, forkReach,
@@ -158,6 +158,22 @@ test('forks: claw on the slider axis at its groove, guide pin in its drum groove
   }
 });
 
+test('the detent arm table agrees with the direct solve', () => {
+  const table = buildDetentTable();
+  for (let k = 0; k < 50; k++) {
+    const d = deg((300 * (k + 0.37)) / 50);           // off the table's own grid, across the copied range too
+    expect(Math.abs(wrapPi(detentArmFromTable(table, d) - detentArmAngle(d))), `${(d * 180) / Math.PI}°`).toBeLessThan(deg(0.02));
+  }
+  // on its grid the table is the direct solve, copied part included
+  for (const k of [0, 600, 1499, 1500, 1501, 2100, 2999, 3000]) expect(table[k]).toBeCloseTo(detentArmAngle(deg(k / 10)), 9);
+  // beyond the drum's travel the table holds its end values
+  expect(detentArmFromTable(table, deg(-5))).toBe(detentArmFromTable(table, 0));
+  expect(detentArmFromTable(table, deg(305))).toBe(detentArmFromTable(table, deg(300)));
+  // and the assembly poses from it
+  const s = createSimulation().getState(); s.drum.angle = deg(97.3); pose(s);
+  expect(relAngle(a.node('detentArm'))).toBeCloseTo(wrapPi(detentArmFromTable(a.rig.detentTable, deg(97.3))), 12);
+});
+
 test('detent roller seats in every notch, swinging the arm, and never sinks into the wheel', () => {
   const rr = DETENT_ARM.rollerRadius;
   const radial = new Map<number, number>(), arm = new Map<number, number>();
@@ -241,18 +257,18 @@ test('clutch plates part as capacity falls; springs end on the hub seats', () =>
   expect(a.node('pressurePlate').getWorldPosition(new THREE.Vector3()).x - open).toBeCloseTo(15 * DIM.clutch.gapOpen, 9);
 });
 
-test('pedal and shift shaft rock ±12° with pedal travel; a state without travel rests', () => {
+test('pedal and shift shaft rock ±12° with pedal travel', () => {
   const s = createSimulation().getState();
   // the lever points forward (-z); lifting its tip turns it toward +y, a positive angle about x
-  (s.pedal as { travel?: number }).travel = 1; pose(s);
+  s.pedal.travel = 1; pose(s);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_SWING, 12);
   expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_SWING, 12);
   const tip = toWorld(body('pedal'), 0, DIM.pedal.length, 0);
-  (s.pedal as { travel?: number }).travel = 0; pose(s);
+  s.pedal.travel = 0; pose(s);
   expect(tip.y).toBeGreaterThan(toWorld(body('pedal'), 0, DIM.pedal.length, 0).y);
-  (s.pedal as { travel?: number }).travel = -0.5; pose(s);
+  s.pedal.travel = -0.5; pose(s);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(-0.5 * PEDAL_SWING, 12);
-  delete (s.pedal as { travel?: number }).travel; pose(s);
+  s.pedal.travel = 0; pose(s);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(0, 12);
   expect(PEDAL_SWING).toBeCloseTo(deg(12), 12);
 });

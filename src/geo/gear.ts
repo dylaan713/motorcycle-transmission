@@ -139,31 +139,33 @@ export function dogRing(o: { count: number; widthDeg: number; innerRadius: numbe
 }
 
 /**
- * A sliding gear with a fork collar beside its teeth. Along x (u = collarSide × x), the teeth take
- * the first `toothWidth` of the face from u = -faceWidth/2; then comes the collar: a groove
- * `grooveWidth` wide down to `grooveRadius`, walled by the teeth on one side and by a plain flange of
- * `flangeRadius` that runs to the face's other end. A fork claw riding in the groove never passes
- * through teeth.
+ * A sliding gear with a fork collar beside its teeth. Along x (u = collarSide × x), from
+ * u = -faceWidth/2: a plain shoulder `shoulderWidth` wide (at `flangeRadius`, carrying that face's
+ * dog ring), the teeth over `toothWidth`, then the collar: a groove `grooveWidth` wide down to
+ * `grooveRadius`, walled by the teeth on one side and by a plain flange of `flangeRadius` that runs
+ * to the face's other end. A fork claw riding in the groove never passes through teeth.
  */
 export function collaredGear(o: {
-  teeth: number; module: number; faceWidth: number; boreRadius: number; toothWidth: number;
+  teeth: number; module: number; faceWidth: number; boreRadius: number; shoulderWidth: number; toothWidth: number;
   grooveWidth: number; grooveRadius: number; flangeRadius: number; collarSide: 1 | -1;
 }): BufferGeometry {
   const rootRadius = (o.teeth * o.module) / 2 - DIM.dedendum * o.module;
   if (!(o.grooveRadius > o.boreRadius && o.grooveRadius < rootRadius)) throw new Error('groove radius must lie between the bore and the root');
   if (!(o.flangeRadius > o.grooveRadius && o.flangeRadius < rootRadius)) throw new Error('flange must stand above the groove and below the root');
-  const flangeWidth = o.faceWidth - o.toothWidth - o.grooveWidth;
-  if (!(o.toothWidth > 0 && o.grooveWidth > 0 && flangeWidth > 0)) throw new Error('teeth, groove and flange must all fit on the face');
+  const flangeWidth = o.faceWidth - o.shoulderWidth - o.toothWidth - o.grooveWidth;
+  if (!(o.shoulderWidth >= 0 && o.toothWidth > 0 && o.grooveWidth > 0 && flangeWidth > 0)) throw new Error('shoulder, teeth, groove and flange must all fit on the face');
   const bore = circle(o.boreRadius, segmentsFor(o.boreRadius, BORE_CHORD, 24));
   const ring = (r: number) => circle(r, segmentsFor(r, BORE_CHORD, 24));
-  const h = o.faceWidth / 2, u1 = -h + o.toothWidth, u2 = u1 + o.grooveWidth;
+  const h = o.faceWidth / 2, u0 = -h + o.shoulderWidth, u1 = u0 + o.toothWidth, u2 = u1 + o.grooveWidth;
   const span = (a: number, b: number): [number, number] => {
     const x = [o.collarSide * a, o.collarSide * b];
     return [Math.min(...x), Math.max(...x)];
   };
-  return toGeometry([
-    prism(gearProfile(o.teeth, o.module), [bore], ...span(-h, u1)),
+  const solids = [
+    prism(gearProfile(o.teeth, o.module), [bore], ...span(u0, u1)),
     prism(ring(o.grooveRadius), [bore], ...span(u1, u2)),
     prism(ring(o.flangeRadius), [bore], ...span(u2, h)),
-  ]);
+  ];
+  if (o.shoulderWidth > 0) solids.push(prism(ring(o.flangeRadius), [bore], ...span(-h, u0)));
+  return toGeometry(solids);
 }

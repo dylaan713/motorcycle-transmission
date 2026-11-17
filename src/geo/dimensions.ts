@@ -9,7 +9,7 @@ export const DIM = {
   inputShaftRadius: 0.011, outputShaftRadius: 0.0125,
   gearPitch: GEAR_PITCH,            // axial distance between neighbouring gear centres
   dogHeight: 0.0025, dogInnerRadius: 0.016, dogOuterRadius: 0.023, dogWidthDeg: 28,  // 5 dogs, 72° pitch
-  clutch: { basketOuterRadius: 0.078, basketDepth: 0.046, plateOuterRadius: 0.070, plateInnerRadius: 0.046,
+  clutch: { basketOuterRadius: 0.078, basketDepth: 0.048, plateOuterRadius: 0.070, plateInnerRadius: 0.046,
             frictionThickness: 0.003, steelThickness: 0.0016, plates: 8, gapOpen: 0.0006,
             hubRadius: 0.044, springCount: 5, springRadius: 0.007 },
   primary: { faceWidth: 0.016 },    // 36T on the crank, 76T ring on the basket, same MODULE

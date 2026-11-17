@@ -1,7 +1,8 @@
 import { test, expect } from 'vitest';
 import { collaredGear } from '../../src/geo/gear';
 import { crankshaft, sleeve } from '../../src/geo/shaft';
-import { FORK_CLAW_DEPTH, grooveAxialOffset, shiftDrum } from '../../src/geo/shift';
+import { FORK_CLAW_DEPTH, STAR_SEAT_EDGES, grooveAxialOffset, shiftDrum, shiftFork, starWheelRadiusAt } from '../../src/geo/shift';
+import { DIM } from '../../src/geo/dimensions';
 import { MODULE } from '../../src/model/geometry';
 import { deg } from '../../src/sim/units';
 import { expectCleanSolid, radii } from './helpers';
@@ -10,23 +11,25 @@ import { expectCleanSolid, radii } from './helpers';
 // collar between the third and fourth gears, the crankshaft, and drum grooves cut for followers
 // that sit at different angles round the drum.
 
-const COLLARED = { teeth: 27, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, toothWidth: 0.007,
-  grooveWidth: 0.0054, grooveRadius: 0.023, flangeRadius: 0.027 } as const;
+const COLLARED = { teeth: 27, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, shoulderWidth: 0.002, toothWidth: 0.007,
+  grooveWidth: 0.0036, grooveRadius: 0.023, flangeRadius: 0.027 } as const;
 
-test('a collared gear: teeth on one part of the face, a grooved collar on the rest', () => {
+test('a collared gear: shoulder, teeth, then a grooved collar, along the face', () => {
+  // u = collarSide × x: shoulder [-7, -5] mm, teeth [-5, 2], groove [2, 5.6], flange [5.6, 7]
+  const at = { teeth: -0.005, groove: 0.002, flange: 0.0056 };
   for (const side of [1, -1] as const) {
     const g = collaredGear({ ...COLLARED, collarSide: side });
     const p = g.getAttribute('position');
     const tip = (27 * MODULE) / 2 + MODULE;
-    const toothEnd = 0;                               // teeth over u in [-7, 0] mm, u = side × x
-    const grooveEnd = toothEnd + 0.0054;
     let teethTips = 0;
     for (let i = 0; i < p.count; i++) {
       const u = side * p.getX(i), r = Math.hypot(p.getY(i), p.getZ(i));
-      if (r > 0.027 + 1e-7) { expect(u, `side ${side}: teeth only on the toothed width`).toBeLessThan(toothEnd + 1e-7); }
+      if (r > 0.027 + 1e-7) {
+        expect(u, `side ${side}: teeth only on the toothed width`).toBeGreaterThan(at.teeth - 1e-7);
+        expect(u).toBeLessThan(at.groove + 1e-7);
+      }
       if (r > tip - 1e-7) teethTips++;
-      if (u > toothEnd + 1e-7 && u < grooveEnd - 1e-7) expect(r).toBeLessThan(0.023 + 1e-7); // no vertex inside the groove
-      if (u > grooveEnd + 1e-7) expect(r, 'flange').toBeLessThan(0.027 + 1e-7);
+      if (u > at.groove + 1e-7 && u < at.flange - 1e-7) expect(r).toBeLessThan(0.023 + 1e-7); // no vertex inside the groove
     }
     expect(teethTips).toBeGreaterThan(27);
     g.computeBoundingBox();
@@ -34,8 +37,31 @@ test('a collared gear: teeth on one part of the face, a grooved collar on the re
     expect(Math.min(...radii(g))).toBeCloseTo(0.0125, 6);
   }
   expect(() => collaredGear({ ...COLLARED, collarSide: 1, grooveRadius: 0.031 })).toThrow();
-  expect(() => collaredGear({ ...COLLARED, collarSide: 1, grooveWidth: 0.008 })).toThrow(); // no room for a flange
+  expect(() => collaredGear({ ...COLLARED, collarSide: 1, grooveWidth: 0.006 })).toThrow(); // no room for a flange
   expect(() => collaredGear({ ...COLLARED, collarSide: 1, flangeRadius: 0.02 })).toThrow();  // flange below the groove
+});
+
+test('a fork with a thin claw: thin within clawReach of the collar centre, full thickness beyond', () => {
+  const reach = 0.0728, clawThickness = 0.0032, clawReach = 0.04;
+  const g = shiftFork({ reach, collarRadius: 0.0235, clawThickness, clawReach });
+  const p = g.getAttribute('position');
+  let thickArm = 0;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), d = Math.hypot(p.getY(i) - reach, p.getZ(i));
+    if (d < clawReach - 1e-7) expect(Math.abs(x), `vertex ${d} from the collar centre`).toBeLessThan(clawThickness / 2 + 1e-7);
+    if (p.getY(i) > 0.012 && Math.abs(Math.abs(x) - DIM.fork.thickness / 2) < 1e-7) thickArm++;
+  }
+  expect(thickArm, 'the arm outside clawReach keeps the full thickness').toBeGreaterThan(0);
+  expect(() => shiftFork({ reach, collarRadius: 0.0235, clawThickness, clawReach: 0.07 })).toThrow(); // thin part reaching the boss
+  expectCleanSolid(g, 'thin-claw fork');
+});
+
+test('star wheel seat edges: where each seat meets the rim', () => {
+  expect(STAR_SEAT_EDGES.length).toBe(14);
+  for (const e of STAR_SEAT_EDGES) {
+    const inSeat = [e - 1e-4, e + 1e-4].map((a) => starWheelRadiusAt(a) < DIM.starWheel.radius - 1e-9);
+    expect(inSeat[0] !== inSeat[1], `edge at ${(e * 180) / Math.PI}°`).toBe(true);
+  }
 });
 
 test('a sleeve and a crankshaft have their sizes', () => {

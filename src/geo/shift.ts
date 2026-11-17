@@ -53,6 +53,13 @@ const DETENTS = Object.entries(PARAMS.drum.detents).map(([name, d]) => {
   return { angle: deg(d), depth, centre };
 });
 
+/** Angles where each seat meets the rim, two per detent, ascending. */
+export const STAR_SEAT_EDGES: readonly number[] = DETENTS.flatMap((d) => {
+  const R = DIM.starWheel.radius, rs = STAR_SEAT_RADIUS;
+  const half = Math.acos((R * R + d.centre * d.centre - rs * rs) / (2 * R * d.centre));
+  return [d.angle - half, d.angle + half];
+}).sort((p, q) => p - q);
+
 /**
  * Star wheel radius at drum angle θ: the rim, except across each detent's seat, where the profile
  * follows the seat circle. Between neighbouring seats the rim is a plateau at full radius.
@@ -124,9 +131,11 @@ export function shiftDrum(
 /**
  * A shift fork: boss on its rod at the origin, a flat arm along +y to a C-shaped claw centred at
  * `reach` that wraps 200° round the slider's collar groove, and a guide pin pointing -y into the
- * drum groove, its tip FORK_PIN_REACH from the rod axis.
+ * drum groove, its tip FORK_PIN_REACH from the rod axis. With `clawThickness`, the plate is that
+ * thin within `clawReach` of the claw centre (where it rides a narrow groove) and keeps the full
+ * fork thickness from there to the boss.
  */
-export function shiftFork(o: { reach: number; collarRadius: number }): BufferGeometry {
+export function shiftFork(o: { reach: number; collarRadius: number; clawThickness?: number; clawReach?: number }): BufferGeometry {
   const t = DIM.fork.thickness / 2;
   const rIn = o.collarRadius, rOut = o.collarRadius + FORK_CLAW_DEPTH;
   const half = 0.0055, root = DIM.fork.rodRadius + 0.0012;  // arm half-height; arm ends inside the boss wall
@@ -134,19 +143,26 @@ export function shiftFork(o: { reach: number; collarRadius: number }): BufferGeo
   if (o.reach - rOut * Math.cos(gamma) <= root) throw new Error('fork claw overlaps its boss');
   const centre = new Vector2(o.reach, 0);
   const open = deg(80); // the claw's tips are 80° either side of +y about the collar centre
+  const thin = o.clawThickness !== undefined && o.clawThickness < DIM.fork.thickness;
+  // where the thin claw part ends along the arm; without a thin claw the whole plate is one piece
+  const edge = thin ? o.reach - (o.clawReach ?? rOut) : root;
+  if (thin && !(edge > root + 0.001 && edge < o.reach - rOut * Math.cos(gamma))) throw new Error('thin claw must end between the boss and the claw');
   const plate = [
-    new Vector2(root, -half),
+    new Vector2(edge, -half),
     ...arc(rOut, Math.PI + gamma, 2 * Math.PI - open, undefined, centre),
     ...arc(rIn, 2 * Math.PI - open, open, undefined, centre),
     ...arc(rOut, open, Math.PI - gamma, undefined, centre),
-    new Vector2(root, half),
+    new Vector2(edge, half),
   ];
+  const tc = thin ? o.clawThickness! / 2 : t;
+  const solids = [prism(plate, [], -tc, tc)];
+  if (thin) solids.push(prism([new Vector2(root, -half), new Vector2(edge, -half), new Vector2(edge, half), new Vector2(root, half)], [], -t, t));
   const boss = lathe([[-FORK_BOSS_LENGTH / 2, DIM.fork.rodRadius], [-FORK_BOSS_LENGTH / 2, FORK_BOSS],
     [FORK_BOSS_LENGTH / 2, FORK_BOSS], [FORK_BOSS_LENGTH / 2, DIM.fork.rodRadius]], 32);
   const r = DIM.fork.pinRadius, c = 0.0005;
   const pin = lathe([[FORK_BOSS - 0.001, 0], [FORK_BOSS - 0.001, r], [FORK_PIN_REACH - c, r], [FORK_PIN_REACH, r - c],
     [FORK_PIN_REACH, 0]], 16);
-  return toGeometry([prism(plate, [], -t, t), boss, transform(pin, new Matrix4().makeRotationZ(-Math.PI / 2))]);
+  return toGeometry([...solids, boss, transform(pin, new Matrix4().makeRotationZ(-Math.PI / 2))]);
 }
 
 export function starWheel(): BufferGeometry {

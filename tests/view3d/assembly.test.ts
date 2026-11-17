@@ -6,7 +6,7 @@ import type { Assembly } from '../../src/view3d/assembly';
 import { poseAssembly } from '../../src/view3d/pose';
 import { partMaterial, setTorque, withEdges } from '../../src/view3d/materials';
 import {
-  CLAW_OUTER, CLUTCH_X0, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS, CRANK, CRANK_AXIS, DRUM_AXIS, DRUM_LENGTH,
+  CLAW_OUTER, CLAW_THICKNESS, CLUTCH_X0, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS, CRANK, CRANK_AXIS, DRUM_AXIS, DRUM_LENGTH,
   FORK_RODS, INPUT_AXIS, OUTPUT_AXIS, OUTPUT_SHAFT_X, REAR_AXIS, SLIDER_AXIS, SPROCKET_X, distanceOf, gearSolids, tipRadius, toothedRange,
 } from '../../src/view3d/layout3d';
 import type { Axis } from '../../src/view3d/layout3d';
@@ -94,6 +94,7 @@ test('triangle budget: under 400,000 with each shared geometry counted once', ()
     if (!seen.has(m.geometry)) { seen.add(m.geometry); unique += t; }
   });
   expect(unique).toBeLessThan(400_000);
+  expect(drawn).toBeLessThan(400_000);
   expect(drawn).toBeGreaterThan(unique);
 });
 
@@ -165,7 +166,7 @@ test('no fork claw volume intersects any gear\'s toothed region', () => {
     poseSlidersAt(x); a.root.updateMatrixWorld(true);
     for (const k of ['A', 'B', 'C'] as SliderId[]) {
       const fx = a.node(`fork${k}` as PartId).getWorldPosition(new THREE.Vector3()).x;
-      const claw = { x0: fx - DIM.fork.thickness / 2, x1: fx + DIM.fork.thickness / 2, rIn: COLLAR_RADIUS[k], rOut: CLAW_OUTER(k) };
+      const claw = { x0: fx - CLAW_THICKNESS[k] / 2, x1: fx + CLAW_THICKNESS[k] / 2, rIn: COLLAR_RADIUS[k], rOut: CLAW_OUTER(k) };
       for (const shaft of ['input', 'output'] as const) for (const g of GEAR_ORDER) {
         const id = `gear${g}${shaft === 'input' ? 'in' : 'out'}` as PartId;
         const p = a.node(id).getWorldPosition(new THREE.Vector3());
@@ -180,7 +181,23 @@ test('no fork claw volume intersects any gear\'s toothed region', () => {
     }
   }
   // the claws of A and B ride in their collar grooves with 0.2 mm clear of each wall
-  expect(COLLAR_GROOVE_WIDTH - DIM.fork.thickness).toBeGreaterThanOrEqual(0.0004 - 1e-12);
+  for (const k of ['A', 'B'] as const) expect(COLLAR_GROOVE_WIDTH - CLAW_THICKNESS[k]).toBeGreaterThanOrEqual(0.0004 - 1e-12);
+});
+
+test('every meshing pair keeps at least 70% of its narrower toothed width in mesh, at every slider position', () => {
+  for (const x of TRAVEL_ENDS) {
+    poseSlidersAt(x); a.root.updateMatrixWorld(true);
+    for (const g of GEAR_ORDER) {
+      const span = (shaft: 'input' | 'output') => {
+        const c = a.node(`gear${g}${shaft === 'input' ? 'in' : 'out'}` as PartId).getWorldPosition(new THREE.Vector3()).x;
+        const [t0, t1] = toothedRange(shaft, g as GearNo);
+        return [c + t0, c + t1];
+      };
+      const [i0, i1] = span('input'), [o0, o1] = span('output');
+      const overlap = Math.min(i1, o1) - Math.max(i0, o0);
+      expect(overlap / Math.min(i1 - i0, o1 - o0), `pair ${g} with sliders at ${x}`).toBeGreaterThanOrEqual(0.7);
+    }
+  }
 });
 
 test('the forks claws stay below the tips of the gears meshing beside them', () => {

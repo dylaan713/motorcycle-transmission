@@ -61,7 +61,7 @@ test('the basket carries the 76-tooth primary ring on its back and opens toward 
   const g = clutchBasket(); g.computeBoundingBox();
   expect(Math.max(...radii(g))).toBeCloseTo((76 * 0.0025) / 2 + 0.0025, 6);
   expect(g.boundingBox!.min.x).toBeCloseTo(-0.016, 8);
-  expect(g.boundingBox!.max.x).toBeCloseTo(CLUTCH.fingerBase + 0.046, 8);
+  expect(g.boundingBox!.max.x).toBeCloseTo(CLUTCH.fingerBase + DIM.clutch.basketDepth, 8);
 });
 
 test('springs span their length and fit between the pressure plate and the seat', () => {
@@ -96,6 +96,25 @@ test('hub and pressure plate never intersect, engaged or fully released', () => 
     expect(d).toBeGreaterThan(DIM.clutchHub.postRadius);
   }
   expect(hubEnd()).toBeCloseTo(plateStackOffsets(0).pressurePlate + DIM.pressurePlate.cover - DIM.clutchHub.endClearance, 12);
+});
+
+test('engaged or fully released, every plate stays on its carrier: friction plates on the fingers, steel on the splines', () => {
+  const fingers = [CLUTCH.fingerBase, CLUTCH.fingerBase + DIM.clutch.basketDepth];
+  const splines = [CLUTCH.hubFace, hubEnd()];
+  for (const sep of [0, 1]) {
+    const st = plateStackOffsets(sep);
+    for (const x of st.friction) {
+      expect(x - DIM.clutch.frictionThickness / 2, `friction at ${sep}`).toBeGreaterThanOrEqual(fingers[0]);
+      expect(x + DIM.clutch.frictionThickness / 2, `friction at ${sep}`).toBeLessThanOrEqual(fingers[1]);
+    }
+    for (const x of st.steel) {
+      expect(x - DIM.clutch.steelThickness / 2, `steel at ${sep}`).toBeGreaterThanOrEqual(splines[0]);
+      expect(x + DIM.clutch.steelThickness / 2, `steel at ${sep}`).toBeLessThanOrEqual(splines[1]);
+    }
+  }
+  // and the basket geometry's fingers really run that far
+  const g = clutchBasket(); g.computeBoundingBox();
+  expect(g.boundingBox!.max.x).toBeCloseTo(fingers[1], 7);
 });
 
 test('every generator in this file builds a clean closed solid', () => {
