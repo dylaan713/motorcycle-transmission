@@ -1,9 +1,45 @@
 # HANDOFF
 
-## State Update (2026-11-16)
+## State Update (2026-11-16, 19:45 EST, checkpoint before a planned wifi outage at 20:00)
 
-- **Done:** Design approved; stage 1 plan written. Nothing built, nothing installed, no git repository yet.
-- **Next:** Overnight build of all six stages, started by the owner.
+- **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) built: shell,
+  loop, controls, schematic, readouts and panel all committed; two review fix rounds were in
+  flight. Stage 3 (3D): all part geometry built and reviewed; assembly was in flight. Plans for
+  stages 2 to 5 are written. 175 tests passing at commit 27df4c0.
+- **Next:** Resume the three pieces that were in flight (below), then stage 3 Tasks 1 and 5, then
+  stages 4, 5 and 6.
+
+### Resume here
+
+Work that was running when the checkpoint was written. Each may have left uncommitted files in the
+working tree: run `git status` first, then `npm test` and `npm run typecheck`, and decide per file
+whether to finish it or discard it. Build ledgers (git-ignored, on disk) are under
+`.superpowers/sdd/<plan name>/progress.md`; findings and briefs sit beside them.
+
+1. **Stage 2, Task 5 fix round** (2D schematic). Findings:
+   `.superpowers/sdd/2026-11-16-stage-2-2d-panel-and-controls/task-5-findings.md`. Finding 1
+   (clutch plates) is committed as 6a35356. Remaining: split `src/view2d/schematic.ts` into
+   `layout.ts`, `paint.ts`, `draw/*`, `flow.ts`; findings 3 to 9; reveal fade per part; both
+   halves of the 3rd/4th sliding piece in the torque fill. Adds `pedal.travel` to `SimState`.
+2. **Stage 2, Task 6 fix round** (panel). Findings: `.../task-6-findings.md`. Takeover hint at every
+   width, focus outline, copy fixes, torque path lists both `gear3in` and `gear4in` in 5th and 6th,
+   readout and tab-key tests.
+3. **Stage 3, Task 4** (3D assembly and pose, plus `src/view3d/materials.ts`). Brief:
+   `.superpowers/sdd/2026-11-16-stage-3-3d-model/task-4-brief.md`; the dispatch clarifications are
+   summarised in that plan's ledger.
+
+After those: each needs its review (and a re-review for the two fix rounds); then stage 2's
+whole-stage review; stage 3 Task 1 (lazy 3D chunk, loader, stage host) and Task 5 (3D view,
+toolbar, inset, callouts); a visual check in the browser; then stages 4 and 5 from their plans;
+then write and run the stage 6 plan (polish, audits, `README.md`, production build, portfolio
+entry draft).
+
+### To restart
+
+Open a session in this folder and say: "Read HANDOFF.md and finish them all."
+Keep the Mac plugged in and the lid open; it went to sleep once mid-build and that killed a
+builder. A dev server may be running on port 5199 and a `caffeinate` keep-awake may still be
+running; both are harmless and can be stopped.
 
 ## Standing authorization for the overnight build (given by the owner 2026-11-16)
 
@@ -69,8 +105,29 @@ Stage 2 (2D panel and controls):
 - Browser checks are done with the browser tool and screenshots, not an added test framework.
 - No project-scoped skills were installed (see `.claude/CAPABILITY.md`); five candidates are listed
   there for you to approve or not.
+- Keyboard: Shift was removed as a clutch key (it fired on Shift+Tab); the clutch is C only.
+- The torque path includes the sliding gear that carries the drive, and in 5th and 6th both halves
+  of the 3rd/4th sliding piece.
+
+Stage 3 (3D model):
+- Free dependencies installed: `three`, `@types/three` (both pre-approved).
+- Solids are built with the project's own prism builder instead of the library's extruder, so
+  every part is a closed solid with clean shading; every generator is tested for that.
+- Two lighter steel colours were added for the 3D view.
+
+Owner requirements added during the build (recorded in the design):
+- "colors are up to your discretion be unique".
+- "make sure things are explained, even i don't make it i should be able to read site and fully
+  understand": stage 5 now includes a How it works section, a glossary, honest "simplified model"
+  labelling and `docs/MODEL.md`.
 
 ## Problems
 
 - Stage 1 final review found that a full pedal stroke out of a false neutral skipped a gear (and
-  could reach neutral from between 2nd and 3rd). Fix in progress; see the State Updates below.
+  could reach neutral from between 2nd and 3rd). Fixed in 58d6052 and confirmed by re-review.
+- Parked from stage 1: the demo rider's first-to-second upshift takes about 0.32 s against a
+  0.15 to 0.2 s target. Cosmetic; revisit in stage 6.
+- My stage 3 plan had the gear-meshing rule wrong; a reviewer caught it before assembly, and it is
+  fixed in e14f271 with tests that check every gear pair for overlap.
+- The Mac went to sleep once mid-build and killed a builder; one builder was also stopped by
+  accident and restarted on the owner's word.
