@@ -21,8 +21,7 @@ whether to finish it or discard it. Build ledgers (git-ignored, on disk) are und
    (clutch plates) is committed as 6a35356. Remaining: split `src/view2d/schematic.ts` into
    `layout.ts`, `paint.ts`, `draw/*`, `flow.ts`; findings 3 to 9; reveal fade per part; both
    halves of the 3rd/4th sliding piece in the torque fill. Adds `pedal.travel` to `SimState`.
-2. **Stage 2, Task 6 fix round** (panel): landed as fd3a43c (178 tests). It still needs its scoped
-   re-review against `.../task-6-findings.md` (diff 68dbf38..fd3a43c, that implementer's files only).
+2. **Stage 2, Task 6 fix round** (panel): done and re-reviewed clean (fd3a43c). Nothing to resume.
 3. **Stage 3, Task 4** (3D assembly and pose, plus `src/view3d/materials.ts`). Brief:
    `.superpowers/sdd/2026-11-16-stage-3-3d-model/task-4-brief.md`; the dispatch clarifications are
    summarised in that plan's ledger.
