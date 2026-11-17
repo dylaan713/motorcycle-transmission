@@ -38,3 +38,24 @@ test('startDemo hands over to a fresh autopilot whose script time starts at 0', 
     sim.step(got);
   }
 });
+test('lesson mode rides the lesson source until left, then the visitor', () => {
+  const visitor: InputSource = () => ({ ...NEUTRAL_INPUTS, throttle: 0.77 });
+  const lesson: InputSource = () => ({ ...NEUTRAL_INPUTS, clutchLever: 1 });
+  const other: InputSource = () => ({ ...NEUTRAL_INPUTS, brake: 1 });
+  const d = createDriver(visitor, { autoStart: true }); const modes: string[] = [];
+  d.onModeChange((m) => modes.push(m));
+  const state = createSimulation().getState();
+  d.enterLesson(lesson);
+  expect(d.mode).toBe('lesson');
+  expect(d.source()(0, state).clutchLever).toBe(1);
+  d.enterLesson(other); // a new step's source replaces the last, still in lesson mode
+  expect(d.source()(0, state).brake).toBe(1);
+  d.leaveLesson();
+  expect(d.mode).toBe('visitor');
+  expect(d.source()(0, state).throttle).toBe(0.77);
+  expect(modes).toEqual(['lesson', 'visitor']);
+  // leaving from the demo (a lesson step that starts with the visitor in control) stops the demo
+  const demo = createDriver(visitor, { autoStart: true });
+  demo.leaveLesson();
+  expect(demo.mode).toBe('visitor');
+});
