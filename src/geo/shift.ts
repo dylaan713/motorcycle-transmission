@@ -13,10 +13,11 @@ import type { Solid } from './mesh';
 /**
  * Shift drum, forks, star wheel, detent arm, pawl and pedal. Every part's axis is +x.
  *
- * The drum and the star wheel are drawn in drum angle: the point of the surface at angle θ is
- * where a fixed follower sits when the drum has turned to θ. A part whose follower (fork pin or
- * detent roller) is at angle φ about the drum axis is therefore posed by rotating the drum by
- * φ - drumAngle.
+ * The drum and the star wheel are drawn in drum angle for a drum that turns by `turn` × its drum
+ * angle about +x. With the default turn of -1, the point of the surface at angle θ is where a fixed
+ * follower sits when the drum has turned to θ, so a part whose follower (fork pin or detent roller)
+ * is at angle φ about the drum axis is posed by rotating the drum by φ - drumAngle. With turn +1
+ * the surface is the mirror image (the point at angle -θ reads θ) and the pose is φ + drumAngle.
  */
 
 const SLIDERS: SliderId[] = ['A', 'B', 'C'];
@@ -84,10 +85,12 @@ export function starWheelRadiusAt(angle: number): number {
  *
  * `followerOffsets[s]` is how far round the drum (from +y toward +z) slider s's follower sits from
  * the reference follower the drum is posed against; that slider's groove is cut that much further
- * round, so every follower reads the same drum angle. Missing offsets are 0.
+ * round, so every follower reads the same drum angle. Missing offsets are 0. `turn` is the drum's
+ * sense of turn (see the top of this file).
  */
 export function shiftDrum(
   length: number, grooveCentres: Record<SliderId, number>, followerOffsets: Partial<Record<SliderId, number>> = {},
+  turn: 1 | -1 = -1,
 ): BufferGeometry {
   const { radius: R, grooveDepth, grooveWidth } = DIM.drum;
   const angles = Array.from({ length: ANGLE_STEPS }, (_, j) => (2 * Math.PI * j) / ANGLE_STEPS);
@@ -99,7 +102,7 @@ export function shiftDrum(
   const rows = angles.map((a) => {
     const xs = Array.from({ length: AXIAL_STEPS + 1 }, (_, i) => -length / 2 + (length * i) / AXIAL_STEPS);
     const centres = SLIDERS.flatMap((s) => {
-      const drum = drumAngleAt(a - (followerOffsets[s] ?? 0));
+      const drum = drumAngleAt(-turn * (a - (followerOffsets[s] ?? 0)));
       const used = drum >= -GROOVE_RUNOUT && drum <= deg(300) + GROOVE_RUNOUT;
       return used ? [grooveCentres[s] + grooveAxialOffset(s, Math.min(Math.max(drum, 0), deg(300)))] : [];
     });
@@ -165,11 +168,12 @@ export function shiftFork(o: { reach: number; collarRadius: number; clawThicknes
   return toGeometry([...solids, boss, transform(pin, new Matrix4().makeRotationZ(-Math.PI / 2))]);
 }
 
-export function starWheel(): BufferGeometry {
+/** The star wheel for a drum that turns by `turn` × its drum angle (see the top of this file). */
+export function starWheel(turn: 1 | -1 = -1): BufferGeometry {
   const steps = 360;
   const outline = Array.from({ length: steps }, (_, i) => {
     const a = (2 * Math.PI * i) / steps;
-    return polar(starWheelRadiusAt(a), a);
+    return polar(starWheelRadiusAt(-turn * a), a);
   });
   const t = DIM.starWheel.thickness / 2;
   return toGeometry([prism(outline, [circle(DIM.starWheelMount.boreRadius, 24)], -t, t)]);

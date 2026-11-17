@@ -108,7 +108,7 @@ test('from the default camera every callout anchor sits on a visible surface of 
 test('the default camera looks from the sprocket end, in front and above; the narrow one more head-on', () => {
   const pos = cameraPose(a.subject, HOME, 1.6).position.clone().sub(a.subject.centre);
   expect(pos.x).toBeGreaterThan(0); // the sprocket end
-  expect(pos.z).toBeLessThan(0); // in front
+  expect(pos.z).toBeGreaterThan(0); // in front (+z)
   expect(pos.y).toBeGreaterThan(0); // above
   const narrow = cameraPose(a.subject, NARROW, 0.9).position.clone().sub(a.subject.centre);
   expect(Math.abs(narrow.x) / Math.abs(narrow.z)).toBeLessThan(Math.abs(pos.x) / Math.abs(pos.z));

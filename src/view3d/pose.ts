@@ -13,7 +13,10 @@ import { plateStackOffsets, springLength } from '../geo/clutch';
 import { DETENT_ARM, STAR_SEAT_DEPTH, STAR_SEAT_EDGES, starWheelRadiusAt } from '../geo/shift';
 import { DRUM_MAX, DRUM_MIN } from '../sim/shiftDrum';
 import { setTorque } from './materials';
-import { DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, FORK_X, PEDAL_SWING, clutchX, directionOf, distanceOf } from './layout3d';
+import {
+  DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, DRUM_TURN, FORK_X, PEDAL_LIFT, PEDAL_SWING, TURN,
+  clutchX, directionOf, distanceOf,
+} from './layout3d';
 import type { Assembly } from './assembly';
 
 const PART_IDS = Object.keys(PARTS) as PartId[];
@@ -62,7 +65,8 @@ export function detentArmAngle(drumAngle: number): number {
   const dv = distanceOf(DETENT_PIVOT, DRUM_AXIS), toDrum = directionOf(DETENT_PIVOT, DRUM_AXIS);
   let contact = DETENT_CONTACT, beta = 0;
   for (let k = 0; k < 4; k++) { // the roller swings on an arc: settle where it touches
-    const rho = rollerRestDistance(drumAngle + (contact - DETENT_CONTACT));
+    // the star wheel's profile under the world direction `contact` (see starWheel in src/geo/shift.ts)
+    const rho = rollerRestDistance(drumAngle - DRUM_TURN * (contact - DETENT_CONTACT));
     const swing = Math.acos(clamp((L * L + dv * dv - rho * rho) / (2 * L * dv), -1, 1));
     // of the two arm angles that reach that distance, the one on the arm's side of the pivot
     const plus = toDrum + swing, minus = toDrum - swing;
@@ -107,6 +111,8 @@ export function detentArmFromTable(table: Float64Array, drumAngle: number): numb
 }
 
 const spin = (node: Object3D, angle: number): void => { node.rotation.x = wrapPi(angle); };
+/** Turn a drivetrain node by a drawn angle (TURN × angle about +x). */
+const drive = (node: Object3D, drawn: number): void => spin(node, TURN * drawn);
 const ON_INPUT: readonly PartId[] = ['inputShaft', 'clutchHub', 'steelPlates', 'pressurePlate'];
 
 /** Move the assembly to a simulation state and light the parts on the torque path. */
@@ -114,26 +120,27 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
   const rig = a.rig;
   const ang = drawnAngles(state);
 
-  // gears turn by gearAngle; sliding gears slide with their slider
+  // gears turn by TURN × gearAngle (layout3d.ts); sliding gears slide with their slider
   for (const g of rig.gears) {
-    g.node.rotation.x = wrapPi(gearAngle(g.shaft, g.g, state.angles));
+    g.node.rotation.x = wrapPi(TURN * gearAngle(g.shaft, g.g, state.angles));
     if (g.slider !== null) g.node.position.x = g.restX + state.sliders[g.slider].x * SLIDER_TRAVEL;
   }
   // a free gear's dog ring turns so its lugs stand drawnDogPhase from the slider's dogs: measured
-  // from the edge of a gear lug to the near edge of a slider dog, in the slider shaft's drawn sense
+  // from the edge of a gear lug to the near edge of a slider dog, in the slider shaft's drawn sense,
+  // turned by TURN like every drawn angle
   for (const d of rig.freeDogs) {
     const sense = PARAMS.sliders[d.slider].shaft === 'input' ? 1 : -1;
     const relative = gearAngle(d.shaft, d.sliderGear, state.angles) - gearAngle(d.shaft, d.free, state.angles);
-    d.ring.rotation.x = wrapPi(relative - sense * LUG_CONTACT - drawnDogPhase(d.slider, d.side, state));
+    d.ring.rotation.x = wrapPi(TURN * (relative - sense * LUG_CONTACT - drawnDogPhase(d.slider, d.side, state)));
   }
   // forks are rigid: they follow their slider exactly
   for (const f of rig.forks) f.node.position.x = FORK_X[f.slider] + state.sliders[f.slider].x * SLIDER_TRAVEL;
 
-  spin(a.node('crank'), ang.crank); spin(a.node('primaryDrive'), ang.crank);
-  spin(a.node('clutchBasket'), ang.basket); spin(a.node('frictionPlates'), ang.basket);
-  for (const id of ON_INPUT) spin(a.node(id), ang.input);
-  spin(a.node('outputShaft'), ang.output); spin(a.node('sprocket'), ang.output);
-  spin(a.node('rearSprocket'), ang.wheel); spin(a.node('rearWheel'), ang.wheel);
+  drive(a.node('crank'), ang.crank); drive(a.node('primaryDrive'), ang.crank);
+  drive(a.node('clutchBasket'), ang.basket); drive(a.node('frictionPlates'), ang.basket);
+  for (const id of ON_INPUT) drive(a.node(id), ang.input);
+  drive(a.node('outputShaft'), ang.output); drive(a.node('sprocket'), ang.output);
+  drive(a.node('rearSprocket'), ang.wheel); drive(a.node('rearWheel'), ang.wheel);
 
   // clutch stack: plates part as capacity falls; springs shorten with the pressure plate
   if (state.clutch.capacity !== rig.posedCapacity) {
@@ -147,22 +154,22 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
   }
 
   // shift drum and star wheel: each follower reads the drum angle
-  spin(a.node('shiftDrum'), DRUM_REFERENCE - state.drum.angle);
-  spin(a.node('starWheel'), DETENT_CONTACT - state.drum.angle);
+  spin(a.node('shiftDrum'), DRUM_REFERENCE + DRUM_TURN * state.drum.angle);
+  spin(a.node('starWheel'), DETENT_CONTACT + DRUM_TURN * state.drum.angle);
   spin(a.node('detentArm'), detentArmFromTable(rig.detentTable, state.drum.angle));
-  // pedal travel (-1 down .. +1 up) turns the shift shaft and lifts the pedal's forward-pointing tip
+  // pedal travel (-1 down .. +1 up) turns the shift shaft and lifts or lowers the pedal's toe
   const travel = clamp(state.pedal.travel, -1, 1);
-  spin(a.node('shiftShaft'), travel * PEDAL_SWING); spin(a.node('pedal'), travel * PEDAL_SWING);
+  spin(a.node('shiftShaft'), PEDAL_LIFT * travel * PEDAL_SWING); spin(a.node('pedal'), PEDAL_LIFT * travel * PEDAL_SWING);
 
   // chain: one link per tooth of front sprocket travel, each link along the chord to the next
-  // roller. The loop is placed mirrored in z. Under drive the drawn output angle falls and the
-  // chain runs on in s (rear to front along the top run).
+  // roller. The front sprocket turns by TURN × the drawn output angle, which grows under drive, and
+  // the chain runs on in s with it (rear to front along the top run).
   const { path: loop, count, spacing, travelPerRadian } = rig.chain;
-  const offset = -ang.output * travelPerRadian;
+  const offset = TURN * ang.output * travelPerRadian;
   let p = loop.pointAt(offset);
   for (let i = 0; i < count; i++) {
     const q = loop.pointAt((i + 1) * spacing + offset);
-    linkMatrix.makeRotationX(Math.atan2(p.z - q.z, q.y - p.y)).setPosition(0, p.y, -p.z);
+    linkMatrix.makeRotationX(Math.atan2(q.z - p.z, q.y - p.y)).setPosition(0, p.y, p.z);
     (i % 2 === 0 ? a.chain.inner : a.chain.outer).setMatrixAt(i >> 1, linkMatrix);
     p = q;
   }

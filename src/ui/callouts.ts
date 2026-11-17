@@ -18,15 +18,16 @@ export interface CalloutSpec {
 
 /**
  * The left column top to bottom, then the right: also the cards' tab order. With the default
- * camera the sprocket end is on the left and the clutch on the right.
+ * camera (in front of the bike, a little to its left) the clutch end is on the left and the sprocket
+ * end on the right, as in the schematic.
  */
 export const CALLOUTS: CalloutSpec[] = [
-  { anchor: 'outputShaft', side: 'left', part: 'outputShaft', title: 'Output shaft', text: 'Drives the chain. It turns only with the rear wheel.' },
-  { anchor: 'finalDrive', side: 'left', part: 'chain', title: 'Final drive', text: 'Sprockets and chain carry the output to the rear wheel.' },
+  { anchor: 'clutch', side: 'left', part: 'clutchBasket', title: 'Clutch', text: 'Connects the engine to the gearbox, and lets it slip or let go.' },
   { anchor: 'forks', side: 'left', part: 'forkC', title: 'Shift forks', text: 'Slide a gear sideways to lock its neighbour to the shaft.' },
-  { anchor: 'clutch', side: 'right', part: 'clutchBasket', title: 'Clutch', text: 'Connects the engine to the gearbox, and lets it slip or let go.' },
+  { anchor: 'shiftDrum', side: 'left', part: 'shiftDrum', title: 'Shift drum', text: 'Each click of the pedal turns it one step and moves a fork.' },
   { anchor: 'inputShaft', side: 'right', part: 'inputShaft', title: 'Input shaft', text: 'Driven by the clutch. Its gears turn whenever the clutch does.' },
-  { anchor: 'shiftDrum', side: 'right', part: 'shiftDrum', title: 'Shift drum', text: 'Each click of the pedal turns it one step and moves a fork.' },
+  { anchor: 'outputShaft', side: 'right', part: 'outputShaft', title: 'Output shaft', text: 'Drives the chain. It turns only with the rear wheel.' },
+  { anchor: 'finalDrive', side: 'right', part: 'chain', title: 'Final drive', text: 'Sprockets and chain carry the output to the rear wheel.' },
 ];
 
 /** One reusable point per anchor, for projectAnchors. */

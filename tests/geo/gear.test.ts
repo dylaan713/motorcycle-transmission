@@ -108,7 +108,7 @@ test('flanks are true involutes of the base circle above it', () => {
 });
 
 // Line-of-centres directions: B straight along +y, the layout's output shaft 35° below horizontal
-// toward -z, and an arbitrary one.
+// toward the rear (-z), and an arbitrary one.
 const PSIS = [0, -Math.PI / 2 - (35 * Math.PI) / 180, 1.234];
 const PAIRS: [number, number][] = [[13, 37], [17, 33], [19, 31], [21, 29], [23, 27], [24, 26]];
 // 0.02 mm: the 13/37 pair has a known ~3 µm overlap at the 13T's radial undercut flank

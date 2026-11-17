@@ -5,8 +5,8 @@ import type { TorquePath } from '../../src/model/torquePath';
 import type { Assembly } from '../../src/view3d/assembly';
 import { buildDetentTable, detentArmAngle, detentArmFromTable, poseAssembly } from '../../src/view3d/pose';
 import {
-  DRUM_AXIS, FOLLOWER_OFFSETS, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, PEDAL_SWING, PRIMARY_PSI, REAR_PITCH_RADIUS, SLIDER_AXIS,
-  clutchX, forkReach,
+  DRUM_AXIS, DRUM_TURN, FOLLOWER_OFFSETS, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, PEDAL_LIFT, PEDAL_REST, PEDAL_SWING, PRIMARY_PSI,
+  REAR_PITCH_RADIUS, SLIDER_AXIS, TURN, clutchX, forkReach,
 } from '../../src/view3d/layout3d';
 import { CENTRE_DISTANCE, MODULE, SLIDER_TRAVEL, gearAngle } from '../../src/model/geometry';
 import type { GearNo, PartId } from '../../src/model/parts';
@@ -31,8 +31,8 @@ const EMPTY: TorquePath = { parts: [], torque: 0, slipping: false, reach: 'none'
 test('pose: rotations follow the simulation and meshing gears counter-rotate', async () => {
   const a = await buildAssembly(() => {}); const sim = inGear(3, 6000); const s = run(sim, inp({ throttle: 0.3 }), 0.2);
   poseAssembly(a, s, torquePath(s));
-  expect(relAngle(a.node('gear1in'))).toBeCloseTo(wrapPi(gearAngle('input', 1, s.angles)), 6);
-  expect(relAngle(a.node('gear1out'))).toBeCloseTo(wrapPi(gearAngle('output', 1, s.angles)), 6);
+  expect(relAngle(a.node('gear1in'))).toBeCloseTo(wrapPi(TURN * gearAngle('input', 1, s.angles)), 6);
+  expect(relAngle(a.node('gear1out'))).toBeCloseTo(wrapPi(TURN * gearAngle('output', 1, s.angles)), 6);
 });
 
 test('pose: sliders, forks and drum move; nothing else shifts axially', async () => {
@@ -150,7 +150,7 @@ test('forks: claw on the slider axis at its groove, guide pin in its drum groove
       expect(r).toBeLessThan(DIM.drum.radius - 0.002);
       // in the drum's own frame, the pin is on its groove's centre line at the drum's surface angle
       const local = tip.clone().applyMatrix4(toDrum);
-      const surface = Math.atan2(local.z, local.y) - FOLLOWER_OFFSETS[k];
+      const surface = -DRUM_TURN * (Math.atan2(local.z, local.y) - FOLLOWER_OFFSETS[k]); // see shiftDrum's turn
       const drumAngle = Math.min(Math.max(wrapPi(surface - deg(150)) + deg(150), 0), deg(300));
       expect(drumAngle, `${k} follower reads the drum angle`).toBeCloseTo(s.drum.angle, 9);
       expect(local.x, `${k} pin on groove centre at ${d}°`).toBeCloseTo(FORK_X[k] + grooveAxialOffset(k, drumAngle), 9);
@@ -183,8 +183,9 @@ test('detent roller seats in every notch, swinging the arm, and never sinks into
     const star = a.node('starWheel').rotation.x;
     let nearest = Infinity;
     for (let i = 0; i < 7200; i++) {
-      const psi = (2 * Math.PI * i) / 7200, r = starWheelRadiusAt(psi);
-      nearest = Math.min(nearest, Math.hypot(DRUM_AXIS.y + r * Math.cos(psi + star) - roller.y, DRUM_AXIS.z + r * Math.sin(psi + star) - roller.z));
+      // the profile at psi sits at the wheel's own angle -DRUM_TURN × psi (see starWheel's turn)
+      const psi = (2 * Math.PI * i) / 7200, r = starWheelRadiusAt(psi), at = -DRUM_TURN * psi + star;
+      nearest = Math.min(nearest, Math.hypot(DRUM_AXIS.y + r * Math.cos(at) - roller.y, DRUM_AXIS.z + r * Math.sin(at) - roller.z));
     }
     expect(nearest, `drum at ${d}°`).toBeGreaterThan(rr - 0.00002);   // never sinks into the wheel
     expect(nearest, `drum at ${d}°`).toBeLessThan(rr + 0.00005);      // always touching it
@@ -204,7 +205,7 @@ test('detent roller seats in every notch, swinging the arm, and never sinks into
   for (const d of [15, 45, 90, 150, 210, 270]) expect(radial.get(d)!, `between at ${d}°`).toBeCloseTo(full, 9);
 });
 
-test('forward drive runs forward: wheel top toward -z, top chain run toward the front sprocket', () => {
+test('forward drive runs forward: wheel top toward the front (+z), top chain run toward the front sprocket', () => {
   const sim = inGear(3, 6000); run(sim, inp({ throttle: 0.5 }), 0.1);
   const s1 = sim.getState(); expect(s1.outputShaftOmega).toBeGreaterThan(0);
   pose(s1);
@@ -224,9 +225,32 @@ test('forward drive runs forward: wheel top toward -z, top chain run toward the 
   expect(i).toBeGreaterThanOrEqual(0);
   for (let k = 0; k < 10; k++) sim.step(inp({ throttle: 0.5 }));
   pose(sim.getState());
-  expect(local.clone().applyMatrix4(body('rearWheel').matrixWorld).z, 'wheel top moves forward').toBeLessThan(top.z - 1e-6);
-  expect(rear.z).toBeGreaterThan(front.z);                     // the rear sprocket is behind (+z)
-  expect(links()[i].z, 'top run moves toward the front sprocket').toBeLessThan(before[i].z - 1e-6);
+  expect(local.clone().applyMatrix4(body('rearWheel').matrixWorld).z, 'wheel top moves forward').toBeGreaterThan(top.z + 1e-6);
+  expect(rear.z).toBeLessThan(front.z);                        // the rear sprocket is behind (-z)
+  expect(links()[i].z, 'top run moves toward the front sprocket').toBeGreaterThan(before[i].z + 1e-6);
+  // and the front sprocket's top moves forward too: the chain is pulled by it, not pushed
+  const sp = body('sprocket'); const topLocal = toWorld(sp, 0, 0, 0).add(new THREE.Vector3(0, FRONT_PITCH_RADIUS, 0))
+    .applyMatrix4(new THREE.Matrix4().copy(sp.matrixWorld).invert());
+  for (let k = 0; k < 10; k++) sim.step(inp({ throttle: 0.5 }));
+  const z0 = topLocal.clone().applyMatrix4(sp.matrixWorld).z;
+  pose(sim.getState());
+  expect(topLocal.clone().applyMatrix4(body('sprocket').matrixWorld).z, 'sprocket top moves forward').toBeGreaterThan(z0 + 1e-6);
+});
+
+test('handedness: front +z and up +y put the sprocket, chain and pedal on the bike\'s left and the clutch on its right', () => {
+  pose(createSimulation().getState());
+  const front = new THREE.Vector3(0, 0, 1), up = new THREE.Vector3(0, 1, 0);
+  const left = new THREE.Vector3().crossVectors(up, front);  // y × z = +x
+  expect(left.x).toBeCloseTo(1, 12);
+  // the crank and the drum are ahead of the shafts, the rear wheel behind: front really is +z
+  const w = (id: PartId) => a.node(id).getWorldPosition(new THREE.Vector3());
+  expect(w('crank').z).toBeGreaterThan(w('inputShaft').z);
+  expect(w('shiftDrum').z).toBeGreaterThan(w('inputShaft').z);
+  expect(w('rearWheel').z).toBeLessThan(w('outputShaft').z - 0.5);
+  const centre = w('gear3in').x; // the middle of the gear train
+  const side = (id: PartId) => Math.sign(new THREE.Box3().setFromObject(a.node(id)).getCenter(new THREE.Vector3()).x - centre);
+  for (const id of ['sprocket', 'chain', 'rearSprocket', 'pedal'] as PartId[]) expect(side(id), `${id} on the left`).toBe(Math.sign(left.x));
+  for (const id of ['clutchBasket', 'pressurePlate', 'primaryDrive'] as PartId[]) expect(side(id), `${id} on the right`).toBe(-Math.sign(left.x));
 });
 
 test('clutch plates part as capacity falls; springs end on the hub seats', () => {
@@ -259,15 +283,16 @@ test('clutch plates part as capacity falls; springs end on the hub seats', () =>
 
 test('pedal and shift shaft rock ±12° with pedal travel', () => {
   const s = createSimulation().getState();
-  // the lever points forward (-z); lifting its tip turns it toward +y, a positive angle about x
+  // travel +1 lifts the toe: the lever turns by PEDAL_LIFT × PEDAL_SWING, whichever way it points
   s.pedal.travel = 1; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_SWING, 12);
-  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_SWING, 12);
+  expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_LIFT * PEDAL_SWING, 12);
+  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_LIFT * PEDAL_SWING, 12);
+  expect(Math.cos(PEDAL_REST + PEDAL_LIFT * PEDAL_SWING)).toBeGreaterThan(Math.cos(PEDAL_REST)); // up is up
   const tip = toWorld(body('pedal'), 0, DIM.pedal.length, 0);
   s.pedal.travel = 0; pose(s);
   expect(tip.y).toBeGreaterThan(toWorld(body('pedal'), 0, DIM.pedal.length, 0).y);
   s.pedal.travel = -0.5; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(-0.5 * PEDAL_SWING, 12);
+  expect(relAngle(a.node('pedal'))).toBeCloseTo(-0.5 * PEDAL_LIFT * PEDAL_SWING, 12);
   s.pedal.travel = 0; pose(s);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(0, 12);
   expect(PEDAL_SWING).toBeCloseTo(deg(12), 12);

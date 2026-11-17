@@ -23,7 +23,7 @@ import {
   FORK_ROD_X, FORK_THIN_REACH, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, INPUT_AXIS, INPUT_SHAFT_X, OUTPUT_AXIS,
   OUTPUT_SHAFT_X, PAWL_ANGLE, PAWL_X, PEDAL_REST, PEDAL_X, PRIMARY_PSI, PRIMARY_X, REAR_AXIS, REAR_PITCH_RADIUS,
   SHIFT_SHAFT_AXIS, SHIFT_SHAFT_RADIUS, SHIFT_SHAFT_X, SLIDER_AXIS, SLIDER_SHOULDER_WIDTH, SLIDER_TOOTH_WIDTH,
-  SPROCKET_THICKNESS, SPROCKET_X, STAR_X, WHEEL_X, clutchX, directionOf, forkReach,
+  DRUM_TURN, SPROCKET_THICKNESS, SPROCKET_X, STAR_X, WHEEL_X, clutchX, directionOf, forkReach,
 } from './layout3d';
 import type { Axis } from './layout3d';
 import { buildDetentTable, poseAssembly } from './pose';
@@ -44,9 +44,8 @@ export interface Rig {
   springBuiltLength: number;
   chain: {
     /**
-     * The chain loop in chainPath's own frame, front sprocket at the chain node's origin and rear
-     * sprocket at z = -centreDistance. It is placed mirrored in z (z -> -z), since the rear sprocket
-     * here is behind the output shaft at +z; s still runs rear to front along the top run.
+     * The chain loop in chainPath's own frame, which is the chain node's: front sprocket at the
+     * origin and rear sprocket at z = -centreDistance, behind it. s runs rear to front along the top run.
      */
     path: ReturnType<typeof chainPath>;
     count: number;
@@ -242,10 +241,10 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   const shift = (): void => {
     rig.detentTable = buildDetentTable(); // ~200 ms, so inside a reported step, after a yield
     const drum = partNode('shiftDrum', 0, DRUM_AXIS);
-    solid(drum, shiftDrum(DRUM_LENGTH, FORK_X, FOLLOWER_OFFSETS), TONE.drum);
+    solid(drum, shiftDrum(DRUM_LENGTH, FORK_X, FOLLOWER_OFFSETS, DRUM_TURN), TONE.drum);
     const axle = [DRUM_LENGTH / 2 - 0.002, STAR_X + DIM.starWheel.thickness / 2 + 0.002] as const;
     solid(drum, plainShaft({ radius: DIM.starWheelMount.boreRadius, length: span(axle) }), TONE.shaft, { x: mid(axle) });
-    solid(partNode('starWheel', STAR_X, DRUM_AXIS), starWheel(), TONE.drum);
+    solid(partNode('starWheel', STAR_X, DRUM_AXIS), starWheel(DRUM_TURN), TONE.drum);
     const forkGeometry = new Map<string, BufferGeometry>();
     for (const s of SLIDERS) {
       const key = `${forkReach(s)}|${COLLAR_RADIUS[s]}|${CLAW_THICKNESS[s]}`;
@@ -289,7 +288,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       { phase: seatPhase(frontWrap / 2, 0, PARAMS.final.front) });
     const rear = partNode('rearSprocket', SPROCKET_X, REAR_AXIS);
     solid(rear, sprocketOf(PARAMS.final.rear, DIM.wheelParts.axleRadius), TONE.chain,
-      { phase: seatPhase(rearStart + (REAR_PITCH_RADIUS * (Math.PI + 2 * b)) / 2, DIM.chain.centreDistance, PARAMS.final.rear) });
+      { phase: seatPhase(rearStart + (REAR_PITCH_RADIUS * (Math.PI + 2 * b)) / 2, -DIM.chain.centreDistance, PARAMS.final.rear) });
     solid(rear, sleeve({ boreRadius: DIM.wheelParts.axleRadius, radius: CARRIER.radius, length: CARRIER.x1 - CARRIER.x0 }), TONE.chain,
       { x: (CARRIER.x0 + CARRIER.x1) / 2 - SPROCKET_X });
     const chain = partNode('chain', SPROCKET_X, OUTPUT_AXIS);
@@ -345,14 +344,11 @@ function chainRig(): Rig['chain'] {
   return { path, count, spacing, travelPerRadian: (PARAMS.final.front * spacing) / (2 * Math.PI) };
 }
 
-/** A point of the chain loop as placed (mirrored in z), relative to the chain node. */
-export const placed = (path: Rig['chain']['path'], s: number): { y: number; z: number } => {
-  const p = path.pointAt(s);
-  return { y: p.y, z: -p.z };
-};
+/** A point of the chain loop, relative to the chain node. */
+export const placed = (path: Rig['chain']['path'], s: number): { y: number; z: number } => path.pointAt(s);
 
 /** About the shafts, the direction (from +y toward +z) of a surface facing the default camera: in front, above. */
-const FACING = deg(-50);
+const FACING = deg(50);
 /** Inset from an exposed end or face, so an anchor sits on the surface, not its edge, m. */
 const ON_FACE = 0.002;
 
@@ -381,7 +377,7 @@ function anchors(fork: Object3D): Record<AnchorId, Vector3> {
   return out;
 }
 /** Anchor placements tuned against the default camera (a test checks each one is seen). */
-const ANCHOR_ANGLE = { clutch: deg(-100), forkReach: 0.4, drumX: 0.03, sprocket: deg(-60) } as const;
+const ANCHOR_ANGLE = { clutch: deg(100), forkReach: 0.4, drumX: -0.03, sprocket: deg(60) } as const;
 
 function framing(root: Object3D, parts: Object3D[], statics?: Object3D): { centre: Vector3; radius: number } {
   root.updateMatrixWorld(true);

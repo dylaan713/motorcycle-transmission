@@ -8,13 +8,33 @@ import { DETENT_ARM, FORK_CLAW_DEPTH, FORK_PIN_REACH, STAR_SEAT_DEPTH } from '..
 import { sprocketPitchRadius } from '../geo/sprocket';
 
 /**
- * Where every part of the 3D model sits, metres. x runs along the shafts: the clutch at the -x end
- * of the input shaft, the front sprocket at the +x end of the output shaft. y is up and the bike's
- * front is -z, so the drawn angles (src/model/geometry.ts) turn every part the physical way: under
- * drive the rear wheel's top moves toward -z and the chain's top run is the tight one, pulled from
- * the rear sprocket to the front. An axis parallel to x is given by its (y, z); angles about x run
- * from +y toward +z, as atan2(z, y), the convention every generator in src/geo uses.
+ * Where every part of the 3D model sits, metres.
+ *
+ * Handedness, stated once (a test in tests/view3d/pose.test.ts pins it):
+ * - x runs along the shafts, y is up, and the bike's front is +z. The frame is right-handed, so the
+ *   bike's right is front × up = z × y = -x and its left is up × front = y × z = +x.
+ * - The clutch is at the -x end of the input shaft: on the bike's right, as on nearly every
+ *   motorcycle. The countershaft sprocket, the chain, the rear sprocket and the gear pedal are at
+ *   the +x end: on the bike's left.
+ * - The 2D schematic draws the clutch on its left and the final drive on its right. The default
+ *   camera (camera.ts) looks from in front of the bike, a little toward its left and from above,
+ *   so its screen right is +x: the 3D picture keeps the schematic's left-to-right order and is
+ *   still the true bike.
+ *
+ * Sense of rotation. Every simulation angle grows as the bike goes forward, and src/model/geometry.ts
+ * draws them in one frame in which the output shaft, sprocket and wheel turn negative going forward.
+ * Going forward the rear wheel's top moves toward the front (+z), a positive turn about +x in this
+ * frame, so a drawn angle a turns its part by TURN × a with TURN = -1. Static mesh phases (meshPhase)
+ * stay valid because every drawn angle flips together: it is the mirror image of the frame the drawn
+ * angles were written for. Under drive the chain's top run is the tight one, pulled from the rear
+ * sprocket to the front.
+ *
+ * An axis parallel to x is given by its (y, z); angles about x run from +y toward +z, as atan2(z, y),
+ * the convention every generator in src/geo uses.
  */
+
+/** A drawn angle (src/model/geometry.ts) turns its part by TURN × that angle about +x. See above. */
+export const TURN = -1;
 
 export interface Axis { readonly y: number; readonly z: number }
 
@@ -28,11 +48,11 @@ export const tipRadius = (shaft: 'input' | 'output', g: GearNo): number => pitch
 // ---- Shafts -----------------------------------------------------------------------------------
 
 export const INPUT_AXIS: Axis = { y: 0, z: 0 };
-/** CENTRE_DISTANCE from the input axis, behind it: 35° below horizontal toward +z. */
-export const OUTPUT_AXIS: Axis = axisAt(INPUT_AXIS, Math.PI / 2 + deg(35), CENTRE_DISTANCE);
+/** CENTRE_DISTANCE from the input axis, behind it: 35° below horizontal toward the rear (-z). */
+export const OUTPUT_AXIS: Axis = axisAt(INPUT_AXIS, -(Math.PI / 2 + deg(35)), CENTRE_DISTANCE);
 export const PRIMARY_CENTRE_DISTANCE = ((PARAMS.primary.drive + PARAMS.primary.driven) * MODULE) / 2;
-/** Above and ahead of the clutch at the primary centre distance: 50° above horizontal toward -z. */
-export const CRANK_AXIS: Axis = axisAt(INPUT_AXIS, -(Math.PI / 2 - deg(50)), PRIMARY_CENTRE_DISTANCE);
+/** Above and ahead of the clutch at the primary centre distance: 50° above horizontal toward the front (+z). */
+export const CRANK_AXIS: Axis = axisAt(INPUT_AXIS, Math.PI / 2 - deg(50), PRIMARY_CENTRE_DISTANCE);
 
 /** Direction from the input axis to the output axis: the psi of every gearbox pair's meshPhase. */
 export const GEARBOX_PSI = directionOf(INPUT_AXIS, OUTPUT_AXIS);
@@ -79,8 +99,14 @@ export const CRANK_GHOST = {
 
 // ---- Shift mechanism --------------------------------------------------------------------------
 
-/** Below and in front of (-z) the shafts: 85 mm from the input axis, 140° round from +y toward -z. */
-export const DRUM_AXIS: Axis = axisAt(INPUT_AXIS, deg(-140), 0.085);
+/** Below and in front of (+z) the shafts: 85 mm from the input axis, 140° round from +y toward +z. */
+export const DRUM_AXIS: Axis = axisAt(INPUT_AXIS, deg(140), 0.085);
+/**
+ * The drum and star wheel turn by DRUM_TURN × the drum angle about +x. Which way a drum turns is a
+ * design choice (its grooves are cut to match); +1 is the mirror image of the layout this model
+ * was first reviewed in, so its shift mechanism keeps that geometry.
+ */
+export const DRUM_TURN = 1;
 export const DRUM_LENGTH = 0.1;   // centred on x = 0
 /** Pin tip clearance above the groove floor, m. */
 const PIN_FLOOR_GAP = 0.001;
@@ -98,7 +124,7 @@ export const SLIDER_AXIS: Record<SliderId, Axis> = { A: OUTPUT_AXIS, B: OUTPUT_A
 export const FOLLOWER_ANGLE: Record<SliderId, number> = {
   A: directionOf(DRUM_AXIS, OUTPUT_AXIS), B: directionOf(DRUM_AXIS, OUTPUT_AXIS), C: directionOf(DRUM_AXIS, INPUT_AXIS),
 };
-/** The drum is posed against slider C's follower: drum rotation = DRUM_REFERENCE - drum angle. */
+/** The drum is posed against slider C's follower: drum rotation = DRUM_REFERENCE + DRUM_TURN × drum angle. */
 export const DRUM_REFERENCE = FOLLOWER_ANGLE.C;
 /** How far round from the reference each slider's groove is cut (shiftDrum's followerOffsets). */
 export const FOLLOWER_OFFSETS: Record<SliderId, number> = {
@@ -162,7 +188,7 @@ export const FORK_THIN_REACH = Math.max(tipRadius('output', 5), tipRadius('outpu
 /** Star wheel on the +x end of the drum, 1.5 mm clear of it. */
 export const STAR_X = DRUM_LENGTH / 2 + 0.0015 + DIM.starWheel.thickness / 2;
 /** Where the detent roller presses on the star wheel, about the drum axis. */
-export const DETENT_CONTACT = deg(-60);
+export const DETENT_CONTACT = deg(60);
 const GEAR_SEAT_DEPTH = STAR_SEAT_DEPTH.gear;
 const rollerOnLobe = DIM.starWheel.radius + DETENT_ARM.rollerRadius;
 /**
@@ -172,31 +198,30 @@ const rollerOnLobe = DIM.starWheel.radius + DETENT_ARM.rollerRadius;
  */
 export const DETENT_PIVOT: Axis = axisAt(
   axisAt(DRUM_AXIS, DETENT_CONTACT, rollerOnLobe - GEAR_SEAT_DEPTH / 2),
-  DETENT_CONTACT - Math.PI / 2, Math.sqrt(DETENT_ARM.length ** 2 - (GEAR_SEAT_DEPTH / 2) ** 2),
+  DETENT_CONTACT + Math.PI / 2, Math.sqrt(DETENT_ARM.length ** 2 - (GEAR_SEAT_DEPTH / 2) ** 2),
 );
 /** Detent arm direction, pivot to roller, with the roller on a lobe. */
 export const DETENT_ARM_REST = directionOf(DETENT_PIVOT, axisAt(DRUM_AXIS, DETENT_CONTACT, rollerOnLobe));
-/** Shift shaft: 40 mm down and forward (-z) of the drum; its pawl points at the drum's end. */
-export const SHIFT_SHAFT_AXIS: Axis = axisAt(DRUM_AXIS, deg(-150), 0.04);
+/** Shift shaft: 40 mm down and forward (+z) of the drum; its pawl points at the drum's end. */
+export const SHIFT_SHAFT_AXIS: Axis = axisAt(DRUM_AXIS, deg(150), 0.04);
 export const SHIFT_SHAFT_RADIUS = 0.007;
 export const PAWL_X = STAR_X + 0.0135;
 export const PAWL_ANGLE = directionOf(SHIFT_SHAFT_AXIS, DRUM_AXIS);
 /** The pedal on the shift shaft's outer end, outboard of the chain. */
 export const PEDAL_X = 0.115;
 export const SHIFT_SHAFT_X = [PAWL_X - 0.004, PEDAL_X + DIM.pedal.bossLength / 2] as const;
-/**
- * Pedal lever at rest: forward (-z) and 10° below horizontal. Travel +1 (up) lifts its tip, turning
- * the lever by +PEDAL_SWING about x.
- */
-export const PEDAL_REST = deg(-100);
+/** Pedal lever at rest: forward (+z) and 10° below horizontal. */
+export const PEDAL_REST = deg(100);
 export const PEDAL_SWING = deg(12);
+/** The sense of turn about +x that lifts the pedal's toe: travel +1 (up) turns it by PEDAL_LIFT × PEDAL_SWING. */
+export const PEDAL_LIFT: 1 | -1 = Math.sin(PEDAL_REST) > 0 ? -1 : 1;
 
 // ---- Final drive ------------------------------------------------------------------------------
 
 export const FRONT_PITCH_RADIUS = sprocketPitchRadius(PARAMS.final.front, DIM.chain.pitch);
 export const REAR_PITCH_RADIUS = sprocketPitchRadius(PARAMS.final.rear, DIM.chain.pitch);
-/** True scale and true distance: the rear axle is centreDistance behind (+z) the output shaft. */
-export const REAR_AXIS: Axis = { y: OUTPUT_AXIS.y, z: OUTPUT_AXIS.z + DIM.chain.centreDistance };
+/** True scale and true distance: the rear axle is centreDistance behind (-z) the output shaft. */
+export const REAR_AXIS: Axis = { y: OUTPUT_AXIS.y, z: OUTPUT_AXIS.z - DIM.chain.centreDistance };
 /** The wheel sits inboard of the chain, its tyre 6 mm clear of the chain's inner face. */
 export const WHEEL_X = SPROCKET_X - DIM.chain.width / 2 - DIM.wheel.width / 2 - 0.006;
 /** Sprocket carrier on the wheel hub's outer end, reaching the rear sprocket. */

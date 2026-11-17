@@ -59,12 +59,12 @@ test('node throws for an unknown part, and every mesh in the tree is pickable', 
 test('layout: the plan placement holds', () => {
   const dir = (from: Axis, to: Axis) => Math.atan2(to.y - from.y, to.z - from.z) * 180 / Math.PI; // from horizontal (+z) toward +y
   expect(distanceOf(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(CENTRE_DISTANCE, 12);
-  // the bike's front is -z: the output shaft is behind (+z) the input, the crank ahead (-z) of the clutch
-  expect(dir(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(-35, 9);           // 35° below horizontal toward +z
+  // the bike's front is +z: the output shaft is behind (-z) the input, the crank ahead (+z) of the clutch
+  expect(dir(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(-145, 9);          // 35° below horizontal toward -z
   expect(distanceOf(CRANK_AXIS, INPUT_AXIS)).toBeCloseTo((36 + 76) * 0.0025 / 2, 12);
-  expect(dir(INPUT_AXIS, CRANK_AXIS)).toBeCloseTo(130, 9);             // 50° above horizontal toward -z
-  expect(DRUM_AXIS.y).toBeLessThan(OUTPUT_AXIS.y); expect(DRUM_AXIS.z).toBeLessThan(INPUT_AXIS.z); // below and in front
-  expect(REAR_AXIS.y).toBe(OUTPUT_AXIS.y); expect(REAR_AXIS.z - OUTPUT_AXIS.z).toBeCloseTo(0.56, 12); // behind
+  expect(dir(INPUT_AXIS, CRANK_AXIS)).toBeCloseTo(50, 9);              // 50° above horizontal toward +z
+  expect(DRUM_AXIS.y).toBeLessThan(OUTPUT_AXIS.y); expect(DRUM_AXIS.z).toBeGreaterThan(INPUT_AXIS.z); // below and in front
+  expect(REAR_AXIS.y).toBe(OUTPUT_AXIS.y); expect(REAR_AXIS.z - OUTPUT_AXIS.z).toBeCloseTo(-0.56, 12); // behind
   a.root.updateMatrixWorld(true);
   const wheel = a.node('rearWheel').getWorldPosition(new THREE.Vector3());
   expect(wheel.y).toBeCloseTo(REAR_AXIS.y, 12); expect(wheel.z).toBeCloseTo(REAR_AXIS.z, 12);
