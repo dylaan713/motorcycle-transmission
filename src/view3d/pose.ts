@@ -19,7 +19,7 @@ import type { Assembly } from './assembly';
 const PART_IDS = Object.keys(PARTS) as PartId[];
 /** Torque that lights a part fully, N·m; anything carrying torque shows at least TORQUE_FLOOR. */
 const TORQUE_FULL = 150;
-const TORQUE_FLOOR = 0.35;
+const TORQUE_FLOOR = 0.55;
 /** Angle from a gear lug's centre to a slider dog's centre when the two just touch, rad. */
 const LUG_CONTACT = deg(DIM.dogWidthDeg);
 const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));

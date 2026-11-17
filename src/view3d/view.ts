@@ -1,6 +1,6 @@
 import {
   Color, DirectionalLight, HemisphereLight, LineBasicMaterial, MathUtils, MeshLambertMaterial, NoToneMapping,
-  PerspectiveCamera, Raycaster, Scene, Spherical, Vector2, Vector3, WebGLRenderer,
+  PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer,
 } from 'three';
 import type { BufferGeometry, Intersection, Material, Mesh, Object3D } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -9,7 +9,8 @@ import type { PartId } from '../model/parts';
 import type { TorquePath } from '../model/torquePath';
 import { COLORS } from '../ui/tokens';
 import type { Assembly } from './assembly';
-import { SIGNAL_FLOOR, type Tone } from './materials';
+import type { Tone } from './materials';
+import { FOV, HOME, NARROW, cameraPose, type CameraPose } from './camera';
 import { poseAssembly } from './pose';
 
 export type CameraPhase = 'start' | 'drag' | 'end';
@@ -37,11 +38,6 @@ export interface View3d extends View {
 }
 
 const MAX_DPR = 2;
-const FOV = 32; // degrees, vertical
-/** Default pose: the gearbox seen from in front (-z), above, and toward the clutch end (-x). */
-const HOME = { azimuth: MathUtils.degToRad(-160), polar: MathUtils.degToRad(71) };
-/** The framing sphere fills this fraction of the stage's height (or width, if narrower). */
-const FILL = 1.75;
 const ZOOM = { min: 0.6, max: 6 }; // × framing radius
 const POLAR = { min: MathUtils.degToRad(6), max: MathUtils.degToRad(96) }; // never below the floor
 /**
@@ -49,7 +45,7 @@ const POLAR = { min: MathUtils.degToRad(6), max: MathUtils.degToRad(96) }; // ne
  * so the faces the visitor sees stay lit as they orbit.
  */
 const KEY_OFFSET = new Vector3(-0.55, 0.8, 0.6);
-const LIGHT = { sky: 1.55, key: 2.1 };
+const LIGHT = { sky: 1.7, key: 2.3 }; // lit faces land near their tokens (sampled: see the task 5 report)
 /** Edge lines fade as the camera backs off, so a far model does not shimmer: opacity 1 → EDGE_FAR. */
 const EDGE_FADE = { from: 4.5, to: 6, far: 0.45 }; // × framing radius
 /** A highlighted part's fill moves this far toward ink. */
@@ -87,7 +83,9 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   const key = new DirectionalLight(COLORS.ink, LIGHT.key);
   scene.add(key, key.target);
 
-  const { centre, radius } = assembly.framing;
+  // the camera orbits the gear train; zoom limits come from the whole framing sphere
+  const centre = assembly.subject.centre;
+  const { radius } = assembly.framing;
   const controls = new OrbitControls(camera, canvas);
   controls.target.copy(centre);
   controls.enableDamping = true;
@@ -105,6 +103,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   const materials = new Set<Material>();
   const edgeMaterials: LineBasicMaterial[] = [];
   const pickable: Object3D[] = [];
+  const solids: Object3D[] = []; // pickable meshes that are not ghosts: they alone hide an anchor
   assembly.root.traverse((o) => {
     const g = (o as Mesh).geometry as BufferGeometry | undefined;
     if (g) geometries.add(g);
@@ -118,7 +117,10 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       if (isLineMat(m)) { m.transparent = true; edgeMaterials.push(m); }
     }
     if (id === undefined) return;
-    if ((o as Mesh).isMesh) pickable.push(o);
+    if ((o as Mesh).isMesh) {
+      pickable.push(o);
+      if (materialsOf(o).every((m) => m.depthWrite)) solids.push(o);
+    }
     let look = looks.get(id);
     if (!look) { look = { fills: [], edges: [], node: assembly.node(id) }; looks.set(id, look); }
     for (const m of materialsOf(o)) {
@@ -129,25 +131,25 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
 
   const TONES = Object.fromEntries((['steel1', 'steel2', 'steel3', 'steel4', 'steel5'] as const).map((t) => [t, new Color(COLORS[t])])) as Record<Tone, Color>;
   const SIGNAL = new Color(COLORS.signal), INK = new Color(COLORS.ink), THIRD = new Color(COLORS.third);
-  /** A fill as setTorque leaves it, optionally lifted toward ink. */
-  const paint = (look: PartLook, lift: number): void => {
-    const torque = (look.node.userData.torque as number | undefined) ?? 0;
+  /** A part as setTorque leaves it, its fills optionally lifted toward ink and its edges inked. */
+  const paint = (look: PartLook, lit: boolean): void => {
+    const face = (look.node.userData.faceTorque as number | undefined) ?? 0;
+    const onPath = ((look.node.userData.torque as number | undefined) ?? 0) > 0;
     for (const m of look.fills) {
       const tone = m.userData.tone as Tone | undefined;
       if (tone === undefined) continue;
-      if (torque > 0) m.color.copy(SIGNAL).multiplyScalar(SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) * torque);
-      else m.color.copy(TONES[tone]);
-      m.color.lerp(INK, lift);
+      m.color.copy(TONES[tone]).lerp(SIGNAL, face).lerp(INK, lit ? LIFT : 0);
     }
+    for (const m of look.edges) m.color.copy(lit ? INK : onPath ? SIGNAL : THIRD);
   };
   let highlighted: PartId | null = null;
   const setHighlight = (part: PartId | null): void => {
     if (part === highlighted) return;
     const before = highlighted === null ? undefined : looks.get(highlighted);
-    if (before) { paint(before, 0); for (const m of before.edges) m.color.copy(THIRD); }
+    if (before) paint(before, false);
     highlighted = part;
     const now = part === null ? undefined : looks.get(part);
-    if (now) { paint(now, LIFT); for (const m of now.edges) m.color.copy(INK); }
+    if (now) paint(now, true);
   };
 
   // ---- camera ----
@@ -155,23 +157,22 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   const size = { w: 0, h: 0 };
   let touched = false; // the visitor has moved the camera since the last reset
   let version = 0;
-  const spherical = new Spherical();
   const tmp = new Vector3();
-  const fitDistance = (): number => {
-    const vHalf = MathUtils.degToRad(FOV / 2);
-    const aspect = width > 0 && height > 0 ? width / height : 1.5;
-    const hHalf = Math.atan(Math.tan(vHalf) * aspect);
-    return radius / (FILL * Math.sin(Math.min(vHalf, hHalf)));
-  };
-  const resetCamera = (): void => {
-    spherical.set(fitDistance(), HOME.polar, HOME.azimuth);
-    camera.position.setFromSpherical(spherical).add(centre);
+  // narrow stages and the inset take a more head-on framing that fills the width
+  const narrowScreen = typeof matchMedia === 'undefined' ? null : matchMedia('(max-width: 899.98px)');
+  let inInset = false;
+  const homePose = (): CameraPose => (inInset || narrowScreen?.matches ? NARROW : HOME);
+  const placeCamera = (pose: CameraPose): void => {
+    const { position } = cameraPose(assembly.subject, pose, width > 0 && height > 0 ? width / height : 1.5);
+    camera.position.copy(position);
     camera.lookAt(centre);
     controls.target.copy(centre);
     controls.update();
-    touched = false;
     version++;
   };
+  const resetCamera = (): void => { placeCamera(homePose()); touched = false; };
+  /** The visitor's camera while the view sits in the inset, given back when it returns to the stage. */
+  let parked: Vector3 | null = null;
 
   // drags hide the labels; a press alone (a click to select) does not count as camera use
   const cameraListeners = new Set<(p: CameraPhase) => void>();
@@ -218,7 +219,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       if (lost || width <= 0 || height <= 0 || (typeof document !== 'undefined' && document.hidden)) return;
       poseAssembly(assembly, state, torqueFlow ? path : EMPTY);
       const look = highlighted === null ? undefined : looks.get(highlighted);
-      if (look) paint(look, LIFT); // setTorque may have repainted it
+      if (look) paint(look, true); // setTorque may have repainted it
       controls.update();
       // the key light follows the camera
       key.position.copy(KEY_OFFSET).applyQuaternion(camera.quaternion)
@@ -229,7 +230,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       const opacity = 1 - t * (1 - EDGE_FADE.far);
       if (Math.abs(opacity - edgeOpacity) > 1e-3) {
         edgeOpacity = opacity;
-        for (const m of edgeMaterials) m.opacity = opacity;
+        for (const m of edgeMaterials) m.opacity = ((m.userData.baseOpacity as number | undefined) ?? 1) * opacity;
       }
       renderer.render(scene, camera);
     },
@@ -240,7 +241,15 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       renderer.setSize(w, h, false); // CSS size comes from the stylesheet
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      if (!touched) resetCamera(); // keep the composition until the visitor moves the camera
+      const inset = container.closest('.stage-inset') !== null;
+      if (inset !== inInset) {
+        inInset = inset;
+        if (inset) { parked = touched ? camera.position.clone() : null; placeCamera(NARROW); }
+        else if (parked) { camera.position.copy(parked); camera.lookAt(centre); controls.update(); parked = null; }
+        else resetCamera();
+      } else if (!touched || inset) {
+        placeCamera(inset ? NARROW : homePose()); // keep the composition until the visitor moves the camera
+      }
       version++;
     },
     pick(x, y) {
@@ -249,7 +258,9 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       raycaster.setFromCamera(ndc, camera);
       hits.length = 0;
       raycaster.intersectObjects(pickable, false, hits);
-      return hits.length > 0 ? (hits[0].object.userData.partId as PartId) : null;
+      // a solid part seen through a ghost wins over the ghost
+      const hit = hits.find((h) => solids.includes(h.object)) ?? hits[0];
+      return hit ? (hit.object.userData.partId as PartId) : null;
     },
     setHighlight,
     dispose() {
@@ -287,7 +298,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       raycaster.set(camera.position, tmp.normalize());
       raycaster.near = 0; raycaster.far = dist - OCCLUSION_SLACK;
       hits.length = 0;
-      raycaster.intersectObjects(pickable, false, hits);
+      raycaster.intersectObjects(solids, false, hits);
       raycaster.far = Infinity;
       return hits.length > 0;
     },

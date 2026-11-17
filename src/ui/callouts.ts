@@ -44,6 +44,25 @@ export interface PlacedCallout {
   fits: boolean;
 }
 
+/** The stage's top-right corner is kept for the instrument cluster, CSS px. */
+export const INSTRUMENT_CLUSTER = { w: 300, h: 220 };
+/** Status line and loader along the top of the stage, px. */
+const TOP_BAND = 48;
+
+/**
+ * Regions of the stage no callout may cover, in the callout layer's coordinates (`origin` is the
+ * layer's top-left within the stage): the status line along the top, the instrument cluster in the
+ * top-right corner, and the inset (already in layer coordinates) when it shows.
+ */
+export function reservedRegions(stage: { w: number; h: number }, origin: { x: number; y: number }, inset: Rect | null): Rect[] {
+  const out: Rect[] = [
+    { x: -origin.x, y: -origin.y, w: stage.w, h: TOP_BAND },
+    { x: stage.w - INSTRUMENT_CLUSTER.w - origin.x, y: -origin.y, w: INSTRUMENT_CLUSTER.w, h: INSTRUMENT_CLUSTER.h },
+  ];
+  if (inset) out.push(inset);
+  return out;
+}
+
 const DEFAULT_CARD = { w: 220, h: 72 };
 const MIN_PITCH = 84; // px between slot tops, at least
 const SLOT_GAP = 12; // px between cards, at least
@@ -168,7 +187,12 @@ export function mountCallouts(layer: HTMLElement, view: View3d): Callouts {
     if (!measured) {
       for (const c of cards) c.hidden = false;
       cardSize = { w: cards[0].offsetWidth, h: Math.max(...cards.map((c) => c.offsetHeight)) };
-      avoid = readAvoid();
+      const stageEl = layer.parentElement;
+      const sr = stageEl?.getBoundingClientRect(), lr = layer.getBoundingClientRect();
+      avoid = [
+        ...(sr ? reservedRegions({ w: sr.width, h: sr.height }, { x: lr.left - sr.left, y: lr.top - sr.top }, null) : []),
+        ...readAvoid(),
+      ];
       measured = true;
     }
     for (const c of CALLOUTS) projected[c.anchor] = view.project(view.anchors[c.anchor]);

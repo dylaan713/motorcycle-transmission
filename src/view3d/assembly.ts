@@ -1,5 +1,5 @@
-import { Box3, Group, InstancedMesh, Sphere, Vector3 } from 'three';
-import type { BufferGeometry, Object3D } from 'three';
+import { Box3, Group, InstancedMesh, Raycaster, Sphere, Vector3 } from 'three';
+import type { BufferGeometry, Mesh, Object3D } from 'three';
 import { FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, MODULE, gearAxialPosition, gearKind, sliderOfGear } from '../model/geometry';
 import { PARTS } from '../model/parts';
 import type { GearNo, PartId } from '../model/parts';
@@ -8,16 +8,17 @@ import { PARAMS } from '../sim/params';
 import { createSimulation } from '../sim/simulation';
 import type { DogSide, SliderId } from '../sim/types';
 import { DIM } from '../geo/dimensions';
+import { deg } from '../sim/units';
 import { collaredGear, dogRing, meshPhase, spurGear } from '../geo/gear';
 import { crankshaft, plainShaft, sleeve } from '../geo/shaft';
 import { sprocket } from '../geo/sprocket';
 import { CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, plateStackOffsets, pressurePlate, springLength, steelPlate } from '../geo/clutch';
 import { detentArm, pedalLever, shiftDrum, shiftFork, shiftPawl, starWheel } from '../geo/shift';
 import { chainLink, chainLinkCount, chainPath, rearWheel } from '../geo/finalDrive';
-import { partMaterial, withEdges } from './materials';
+import { partMaterial, setGhost, withEdges } from './materials';
 import type { Tone } from './materials';
 import {
-  CARRIER, CLAW_THICKNESS, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_FLANGE_RADIUS, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS,
+  CARRIER, CLAW_THICKNESS, CRANK_GHOST, CRANK_STUB_X1, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_FLANGE_RADIUS, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS,
   COLLAR_SIDE, CRANK, CRANK_AXIS, DETENT_PIVOT, DRUM_AXIS, DRUM_LENGTH, FOLLOWER_OFFSETS, FORK_ROD, FORK_RODS,
   FORK_ROD_X, FORK_THIN_REACH, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, INPUT_AXIS, INPUT_SHAFT_X, OUTPUT_AXIS,
   OUTPUT_SHAFT_X, PAWL_ANGLE, PAWL_X, PEDAL_REST, PEDAL_X, PRIMARY_PSI, PRIMARY_X, REAR_AXIS, REAR_PITCH_RADIUS,
@@ -64,12 +65,19 @@ export interface Assembly {
   root: Group;
   /** The moving node for a part; throws if missing. */
   node(id: PartId): Object3D;
-  /** World-space callout anchors. */
+  /**
+   * Parts drawn as context, not mechanism (ghosted wholly or in part): their faces never light; on
+   * the torque path only their edges carry the signal.
+   */
+  contextParts: PartId[];
+  /** World-space callout anchors, each on a surface of its group that the default camera sees. */
   anchors: Record<AnchorId, Vector3>;
   /** Chain links: inner links in one InstancedMesh, outer links in another, alternating along the loop. */
   chain: { inner: InstancedMesh; outer: InstancedMesh };
   /** Sphere round the gearbox, clutch and shift mechanism, excluding the chain's long run and the rear wheel. */
   framing: { centre: Vector3; radius: number };
+  /** Sphere round the subject the default camera looks at: the six gear pairs, the forks and the drum. */
+  subject: { centre: Vector3; radius: number };
   /** Internal: what poseAssembly drives. */
   rig: Rig;
 }
@@ -79,6 +87,7 @@ const TONE = {
   clutchPart: 'steel4', spring: 'steel5', drum: 'steel3', lever: 'steel4', chain: 'steel4', tyre: 'steel1', rim: 'steel3',
 } as const satisfies Record<string, Tone>;
 
+const CONTEXT_PARTS: readonly PartId[] = ['rearWheel', 'crank'];
 const SHAFT_RADIUS: Record<Shaft, number> = { input: DIM.inputShaftRadius, output: DIM.outputShaftRadius };
 const SHAFT_AXIS: Record<Shaft, Axis> = { input: INPUT_AXIS, output: OUTPUT_AXIS };
 const SLIDERS = Object.keys(PARAMS.sliders) as SliderId[];
@@ -130,7 +139,10 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       plainShaft({ radius: DIM.inputShaftRadius, length: span(INPUT_SHAFT_X) }), TONE.shaft);
     solid(partNode('outputShaft', mid(OUTPUT_SHAFT_X), OUTPUT_AXIS),
       plainShaft({ radius: DIM.outputShaftRadius, length: span(OUTPUT_SHAFT_X) }), TONE.shaft);
-    solid(partNode('crank', 0, CRANK_AXIS), crankshaft(CRANK), TONE.shaft);
+    // the crank is context: a solid stub through the primary drive gear, one throw as a ghost
+    const crank = partNode('crank', 0, CRANK_AXIS);
+    solid(crank, plainShaft({ radius: CRANK.journalRadius, length: CRANK_STUB_X1 - CRANK.x0 }), TONE.shaft, { x: (CRANK.x0 + CRANK_STUB_X1) / 2 });
+    setGhost(solid(crank, crankshaft(CRANK_GHOST), TONE.shaft), true);
   };
 
   // ---- gears ----
@@ -285,7 +297,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
     chainMeshes = { inner, outer };
     const wheel = partNode('rearWheel', WHEEL_X, REAR_AXIS);
     const [tyre, rim, hub] = rearWheel();
-    solid(wheel, tyre, TONE.tyre); solid(wheel, rim, TONE.rim); solid(wheel, hub, TONE.rim);
+    for (const [g, tone] of [[tyre, TONE.tyre], [rim, TONE.rim], [hub, TONE.rim]] as const) setGhost(solid(wheel, g, tone), true); // context
   };
 
   const steps = [shafts, gears('input'), gears('output'), clutch, shift, finalDrive];
@@ -296,6 +308,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   }
 
   for (const [id, n] of nodes) n.traverse((o) => { o.userData.partId = id; });
+  for (const id of CONTEXT_PARTS) nodes.get(id)!.userData.context = true;
   for (const id of Object.keys(PARTS) as PartId[]) if (!nodes.has(id)) throw new Error(`no node built for ${id}`);
 
   const assembly: Assembly = {
@@ -305,15 +318,18 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       if (!n) throw new Error(`no node for part ${id}`);
       return n;
     },
-    anchors: anchors(rig),
+    anchors: anchors(nodes.get('forkC')!),
+    contextParts: [...CONTEXT_PARTS],
     chain: chainMeshes!,
     framing: { centre: new Vector3(), radius: 0 },
+    subject: { centre: new Vector3(), radius: 0 },
     rig,
   };
   const empty: TorquePath = { parts: [], torque: 0, slipping: false, reach: 'none' };
   poseAssembly(assembly, createSimulation().getState(), empty);
   for (const m of [assembly.chain.inner, assembly.chain.outer]) m.computeBoundingSphere();
   assembly.framing = framing(root, [...nodes].filter(([id]) => id !== 'chain' && id !== 'rearSprocket' && id !== 'rearWheel').map(([, n]) => n), statics);
+  assembly.subject = framing(root, [...rig.gears.map((g) => g.node), ...rig.forks.map((f) => f.node), nodes.get('shiftDrum')!]);
   return assembly;
 }
 
@@ -331,28 +347,42 @@ export const placed = (path: Rig['chain']['path'], s: number): { y: number; z: n
   return { y: p.y, z: -p.z };
 };
 
-function anchors(rig: Rig): Record<AnchorId, Vector3> {
+/** About the shafts, the direction (from +y toward +z) of a surface facing the default camera: in front, above. */
+const FACING = deg(-50);
+/** Inset from an exposed end or face, so an anchor sits on the surface, not its edge, m. */
+const ON_FACE = 0.002;
+
+function anchors(fork: Object3D): Record<AnchorId, Vector3> {
   const on = (x: number, axis: Axis, angle: number, r: number): Vector3 =>
     new Vector3(x, axis.y + r * Math.cos(angle), axis.z + r * Math.sin(angle));
-  const firstFace = gearAxialPosition(GEAR_ORDER[0]) - FACE_WIDTH / 2;
-  const lastFace = gearAxialPosition(GEAR_ORDER[GEAR_ORDER.length - 1]) + FACE_WIDTH / 2;
-  const top = placed(rig.chain.path, -0.05); // on the top run, 5 cm behind the front sprocket
-  const forkC = FORK_ROD.C;
-  const toInput = directionOf(forkC, INPUT_AXIS);
-  return {
-    clutch: on(clutchX(DIM.basket.floor + DIM.clutch.basketDepth / 2), INPUT_AXIS, 0, DIM.clutch.basketOuterRadius),
-    inputShaft: on((clutchX(-DIM.primary.faceWidth) + firstFace) / 2, INPUT_AXIS, 0, DIM.inputShaftRadius),
-    outputShaft: on((lastFace + SPROCKET_X - SPROCKET_THICKNESS / 2) / 2, OUTPUT_AXIS, 0, DIM.outputShaftRadius),
-    shiftDrum: on((FORK_X.A + FORK_X.C) / 2, DRUM_AXIS, directionOf(INPUT_AXIS, DRUM_AXIS), DIM.drum.radius),
-    forks: on(FORK_X.C, forkC, toInput, forkReach('C') / 2),
-    finalDrive: new Vector3(SPROCKET_X, OUTPUT_AXIS.y + top.y, OUTPUT_AXIS.z + top.z),
+  const ringFace = PRIMARY_X + DIM.primary.faceWidth / 2; // the basket's primary ring, gearbox side
+  const sprocketFace = SPROCKET_X + SPROCKET_THICKNESS / 2;
+  const out = {
+    // the basket's rim: its primary ring, in front, where the crank does not reach
+    clutch: on(ringFace, INPUT_AXIS, ANCHOR_ANGLE.clutch, PARAMS.primary.driven * MODULE / 2 - 2 * MODULE),
+    // the shafts' exposed sprocket-side ends
+    inputShaft: on(INPUT_SHAFT_X[1] - ON_FACE, INPUT_AXIS, FACING, DIM.inputShaftRadius),
+    outputShaft: on(OUTPUT_SHAFT_X[1] - ON_FACE, OUTPUT_AXIS, FACING, DIM.outputShaftRadius),
+    // fork C's arm, part way out (moved onto its sprocket-side face once the fork is built)
+    forks: on(FORK_X.C, FORK_ROD.C, directionOf(FORK_ROD.C, SLIDER_AXIS.C), forkReach('C') * ANCHOR_ANGLE.forkReach),
+    shiftDrum: on(ANCHOR_ANGLE.drumX, DRUM_AXIS, FACING, DIM.drum.radius),
+    // the front sprocket's outer face, between hub and teeth
+    finalDrive: on(sprocketFace, OUTPUT_AXIS, ANCHOR_ANGLE.sprocket, FRONT_PITCH_RADIUS * 0.7),
   };
+  // the fork's arm is shaped, not a plain plate: find its sprocket-side face at the anchor
+  fork.updateWorldMatrix(true, true);
+  const p = out.forks;
+  const hit = new Raycaster(new Vector3(p.x + 1, p.y, p.z), new Vector3(-1, 0, 0)).intersectObject(fork, true).find((h) => (h.object as Mesh).isMesh);
+  if (hit) p.x = hit.point.x - ON_FACE / 4;
+  return out;
 }
+/** Anchor placements tuned against the default camera (a test checks each one is seen). */
+const ANCHOR_ANGLE = { clutch: deg(-100), forkReach: 0.4, drumX: 0.03, sprocket: deg(-60) } as const;
 
-function framing(root: Object3D, parts: Object3D[], statics: Object3D): { centre: Vector3; radius: number } {
+function framing(root: Object3D, parts: Object3D[], statics?: Object3D): { centre: Vector3; radius: number } {
   root.updateMatrixWorld(true);
   const box = new Box3();
-  for (const p of [...parts, statics]) box.expandByObject(p);
+  for (const p of statics ? [...parts, statics] : parts) box.expandByObject(p);
   const sphere = box.getBoundingSphere(new Sphere());
   return { centre: sphere.center, radius: sphere.radius };
 }

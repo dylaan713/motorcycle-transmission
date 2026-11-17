@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { CALLOUTS, layoutCallouts } from '../../src/ui/callouts';
+import { CALLOUTS, layoutCallouts, reservedRegions } from '../../src/ui/callouts';
 
 test('callouts take fixed slots on their side and lines join card to anchor', () => {
   const projected = Object.fromEntries(CALLOUTS.map((c, i) => [c.anchor, { x: 400 + i * 40, y: 200 + i * 30, visible: i !== 2 }]));
@@ -50,4 +50,23 @@ test('cards keep clear of the regions they must avoid, and say when a side has n
   }
   const cramped = layoutCallouts(CALLOUTS, projected, { w: 1000, h: 260 }, { card, avoid: [{ x: 0, y: 120, w: 340, h: 140 }] });
   expect(cramped.filter((o) => o.spec.side === 'left').every((o) => !o.fits)).toBe(true);
+});
+
+test('reserved regions: the instrument cluster top-right and the inset bottom-left stay clear, three cards a side', () => {
+  // a 1440 × 900 stage: 1080 × 712, its layer inset 24 px, the inset 28% at bottom-left
+  const stage = { w: 1080, h: 712 }, origin = { x: 24, y: 24 };
+  const layer = { w: 1032, h: 606 };
+  const inset = { x: 0, y: 712 - 24 - 175 - 24, w: 278, h: 175 };
+  const reserved = reservedRegions(stage, origin, inset);
+  expect(reserved).toContainEqual({ x: stage.w - 300 - origin.x, y: -origin.y, w: 300, h: 220 });
+  const projected = Object.fromEntries(CALLOUTS.map((c) => [c.anchor, { x: 500, y: 300, visible: true }]));
+  const card = { w: 220, h: 72 };
+  const out = layoutCallouts(CALLOUTS, projected, layer, { card, avoid: reserved });
+  expect(out.filter((o) => o.spec.side === 'left').length).toBe(3);
+  expect(out.filter((o) => o.spec.side === 'right').length).toBe(3);
+  for (const o of out) {
+    expect(o.fits, o.spec.title).toBe(true);
+    if (o.spec.side === 'right') expect(o.card.y + origin.y).toBeGreaterThanOrEqual(220);
+    if (o.spec.side === 'left') expect(o.card.y + card.h).toBeLessThanOrEqual(inset.y);
+  }
 });

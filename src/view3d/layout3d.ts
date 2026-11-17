@@ -68,6 +68,15 @@ export const CRANK = {
   throwRadius: 0.0225, pinRadius: 0.016, pinLength: 0.016, webThickness: 0.007, webRadius: 0.034,
 } as const;
 
+/**
+ * The crank is context, not mechanism: drawn as a solid stub through the primary drive gear, then
+ * one throw hinted as a ghost. The full CRANK above stays the reference for clearances.
+ */
+export const CRANK_STUB_X1 = PRIMARY_X + DIM.primary.faceWidth / 2 + 0.012;
+export const CRANK_GHOST = {
+  ...CRANK, x0: CRANK_STUB_X1, x1: CRANK_STUB_X1 + 0.04, throws: [{ x: CRANK_STUB_X1 + 0.02, angle: 0 }],
+} as const;
+
 // ---- Shift mechanism --------------------------------------------------------------------------
 
 /** Below and in front of (-z) the shafts: 85 mm from the input axis, 140° round from +y toward -z. */
