@@ -144,9 +144,21 @@ test('the state tells neutral from a false neutral by the detent the drum sits i
   expect(sim.getState().drum.detent).toBeNull();
   expect(run(sim, inp({ clutchLever: 1 }), 0.5).drum.detent).toBe(2); // and the field follows the drum
 });
-test('the pedal ratchet state carries only the stroke start', () => {
+test('the pedal state carries the stroke start and the pedal travel, nothing else', () => {
   const s = createSimulation().getState();
-  expect(s.pedal).toEqual({ strokeStartAngle: deg(PARAMS.drum.detents.N) });
+  expect(s.pedal).toEqual({ strokeStartAngle: deg(PARAMS.drum.detents.N), travel: 0 });
+});
+test('pedal travel follows the sanitised pedal input each step and resets to rest', () => {
+  const sim = createSimulation();
+  sim.step(inp({ pedal: 0.4 }));
+  expect(sim.getState().pedal.travel).toBe(0.4);
+  sim.step(inp({ pedal: -3 }));
+  expect(sim.getState().pedal.travel).toBe(-1);
+  sim.step({ ...inp(), pedal: Number.NaN });
+  expect(sim.getState().pedal.travel).toBe(0);
+  sim.step(inp({ pedal: 1 }));
+  sim.reset();
+  expect(sim.getState().pedal.travel).toBe(0);
 });
 test('shaft angles advance with speed and keep the gear ratio', () => {
   const sim = inGear(3, 6000);

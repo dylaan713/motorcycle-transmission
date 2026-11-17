@@ -62,7 +62,9 @@ export interface SimState {
   roadSpeed: number; // m/s
   // detent: the detent the drum is seated in (within 3°), null between detents (a false neutral)
   drum: { angle: number; omega: number; detent: DetentName | null };
-  pedal: { strokeStartAngle: number }; // drum angle where the current pedal stroke began
+  // strokeStartAngle: drum angle where the current pedal stroke began; travel: the sanitised pedal
+  // input of the last step, -1 full down .. +1 full up, 0 at rest (for drawing the pedal)
+  pedal: { strokeStartAngle: number; travel: number };
   sliders: Record<SliderId, SimSliderState>;
   lockedGear: GearId | null; // null = neutral or false neutral
   dogTorque: number; // N·m through the locked dog, signed
