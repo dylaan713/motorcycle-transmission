@@ -1,41 +1,40 @@
 # HANDOFF
 
-## State Update (2026-11-16, 19:45 EST, checkpoint before a planned wifi outage at 20:00)
+## State Update (2026-11-16, 21:50 EST)
 
-- **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) built: shell,
-  loop, controls, schematic, readouts and panel all committed; two review fix rounds were in
-  flight. Stage 3 (3D): all part geometry built and reviewed; assembly was in flight. Plans for
-  stages 2 to 5 are written. 212 tests passing at commit bd84360.
-- **Next:** Resume the three pieces that were in flight (below), then stage 3 Tasks 1 and 5, then
-  stages 4, 5 and 6.
+- **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) complete; its
+  whole-stage review found 6 defects, 20 minors and 7 design changes, all fixed in commits cf2a0a1,
+  b16bb7d and 3c08636 (re-review running). Stage 3 (3D model): all five tasks built; the 3D view is
+  the main stage view with the schematic as an inset, an instrument cluster, toolbar and callouts.
+  281 tests passing at commit 3c08636; first-paint JavaScript 31.48 kB and the 3D file about
+  155 kB gzipped. Plans for all six stages are written.
+- **Next:** Act on the two reviews that were running (stage 2 fix-wave re-review; stage 3
+  whole-stage review). Then stage 4 (slow motion, exploded view, x-ray, turning parts by hand,
+  part focus), stage 5 (lessons, How it works, glossary, `docs/MODEL.md`), stage 6 (audits,
+  polish, README, production build, portfolio draft).
 
 ### Resume here
 
-Status of the three pieces that were running at the checkpoint. All three have since committed;
-the working tree was clean at 19:55. Still, run `git status` first, then `npm test` and `npm run typecheck`, and decide per file
-whether to finish it or discard it. Build ledgers (git-ignored, on disk) are under
-`.superpowers/sdd/<plan name>/progress.md`; findings and briefs sit beside them.
+Run `git status`, `npm test` and `npm run typecheck` first. Build ledgers (git-ignored, on disk)
+are under `.superpowers/sdd/<plan name>/progress.md`; findings, briefs and reports sit beside them.
 
-1. **Stage 2, Task 5 fix round** (2D schematic): done and re-reviewed clean (through 4b16589). Nothing to resume.
-2. **Stage 2, Task 6 fix round** (panel): done and re-reviewed clean (fd3a43c). Nothing to resume.
-3. **Stage 3, Task 4** (3D assembly and pose): landed as bd84360 (212 tests) but NOT yet reviewed.
-   Its report and five open concerns, with the ruling I intend for each, are at the end of
-   `.superpowers/sdd/2026-11-16-stage-3-3d-model/progress.md`. The two that matter: the drawn
-   rotation sense is mirrored for the layout (the bike appears to run backwards), and the detent
-   roller barely moves because the star wheel's notches are too narrow. Fix both, then review.
-
-After that: Task 4 needs its review; stage 2 needs its whole-stage final review and browser
-checks (1440 × 900, 390 × 844, reduced motion, JavaScript off); then stage 3 Task 1 (lazy 3D chunk, loader, stage host) and Task 5 (3D view,
-toolbar, inset, callouts); a visual check in the browser; then stages 4 and 5 from their plans;
-then write and run the stage 6 plan (polish, audits, `README.md`, production build, portfolio
-entry draft).
+1. **Stage 2 fix-wave re-review**: findings `.superpowers/sdd/2026-11-16-stage-2-2d-panel-and-controls/final-review-findings.md`,
+   implementer's report `final-fix-report.md`, diff `review-final-fix.diff`. If no verdict is in that
+   ledger, re-run the re-review. Known leftover: in the tachometer the "×1,000 rpm" caption overlaps
+   the "10" numeral.
+2. **Stage 3 whole-stage review**: if no result is in `.superpowers/sdd/2026-11-16-stage-3-3d-model/progress.md`,
+   re-run it. Known visual leftovers: the clutch's ring gear is the largest orange shape and is
+   cropped at the right edge of the default view; the gear pedal is cut off at the bottom-left.
+   Then one fix wave for whatever it finds.
+3. **Stages 4, 5 and 6**: run from their plans in `docs/superpowers/plans/`.
 
 ### To restart
 
 Open a session in this folder and say: "Read HANDOFF.md and finish them all."
 Keep the Mac plugged in and the lid open; it went to sleep once mid-build and that killed a
-builder. A dev server may be running on port 5199 and a `caffeinate` keep-awake may still be
-running; both are harmless and can be stopped.
+builder. Start a keep-awake first (`caffeinate -i -s -t 43200` in the background).
+
+To see it now: `npm run dev`, then open the address it prints.
 
 ## Standing authorization for the overnight build (given by the owner 2026-11-16)
 
