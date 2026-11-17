@@ -1,15 +1,16 @@
 import type { BufferGeometry } from 'three';
-import { Vector3 } from 'three';
-import { MODULE } from '../model/geometry';
+import { Matrix4, Vector2, Vector3 } from 'three';
+import { PRIMARY_MODULE } from '../model/geometry';
+import { PARAMS } from '../sim/params';
 import { DIM } from './dimensions';
 import { gearProfile } from './gear';
 import { arc, castellated, circle, polar, segmentsFor } from './outline';
-import { lathe, prism, toGeometry, translate, tube } from './mesh';
+import { lathe, prism, toGeometry, transform, translate, tube } from './mesh';
 import type { Solid } from './mesh';
 
 /**
  * Wet multi-plate clutch. Every part's axis is +x. The basket and hub are built in the clutch
- * frame: x = 0 is the outer face of the basket's back, the 76-tooth primary ring sits behind it
+ * frame: x = 0 is the outer face of the basket's back, the primary driven ring sits behind it
  * (x < 0) and the basket opens toward +x. Plates are centred on their own origin and placed at
  * `plateStackOffsets`; the pressure plate's origin is its clamping face; a spring runs from its
  * origin along +x.
@@ -20,7 +21,6 @@ const B = DIM.basket;
 const H = DIM.clutchHub;
 const PP = DIM.pressurePlate;
 const S = DIM.spring;
-const PRIMARY_DRIVEN_TEETH = 76;
 const ROUND = 0.0015;            // polygon chord for round edges, m
 const FINGER_INNER = C.basketOuterRadius - B.wall;
 const HUB_ROOT = C.hubRadius - H.splineDepth;
@@ -68,7 +68,7 @@ const annulus = (rIn: number, rOut: number, x0: number, x1: number): Solid => pr
 const springAngles = Array.from({ length: C.springCount }, (_, k) => (2 * Math.PI * k) / C.springCount);
 
 export function clutchBasket(): BufferGeometry {
-  const ringGear = prism(gearProfile(PRIMARY_DRIVEN_TEETH, MODULE), [ring(B.boreRadius)], -DIM.primary.faceWidth, 0);
+  const ringGear = prism(gearProfile(PARAMS.primary.driven, PRIMARY_MODULE), [ring(B.boreRadius)], -DIM.primary.faceWidth, 0);
   const back = annulus(B.boreRadius, C.basketOuterRadius, 0, CLUTCH.fingerBase);
   const pitch = (2 * Math.PI) / B.tabs;
   const slotHalf = (B.tabHalfWidth + B.slotClearance) / ((C.plateOuterRadius + B.tabOuterRadius) / 2);
@@ -143,4 +143,47 @@ export function clutchSpring(length: number): BufferGeometry {
     return new Vector3(xAt(u), C.springRadius * Math.cos(a), C.springRadius * Math.sin(a));
   });
   return toGeometry([tube(path, S.wire, 10)]); // 36° facets, inside the crease angle: shades round
+}
+
+/**
+ * The bush the basket runs on: a sleeve in the basket's bore round the input shaft, with running
+ * clearance inside, standing a little proud of the primary ring's face. Clutch frame x.
+ */
+export function basketBush(): BufferGeometry {
+  const { clearance, proud } = DIM.basketBush;
+  const x0 = -DIM.primary.faceWidth - proud, x1 = B.floor, rIn = DIM.inputShaftRadius + clearance, rOut = B.boreRadius;
+  return toGeometry([lathe([[x0, rIn], [x0, rOut], [x1, rOut], [x1, rIn]], segmentsFor(rOut, ROUND, 24))]);
+}
+
+const R = DIM.release;
+/**
+ * The release pushrod with its lifter, along +x: the lifter's flange (radius lifterRadius) at
+ * x in [-lifterThickness, 0] with a boss standing `bossLength` the other way through the pressure
+ * plate's lift hole, and the rod from x = 0 to `length`, its end domed on a sphere of domeRadius.
+ */
+export function releaseRod(length: number, bossLength: number): BufferGeometry {
+  const r = R.rodRadius, rd = R.domeRadius, steps = 6;
+  const dome: [number, number][] = Array.from({ length: steps + 1 }, (_, i) => {
+    const rr = r * (1 - i / steps);
+    return [length - rd + Math.sqrt(rd * rd - rr * rr), rr];
+  });
+  const rod = lathe([[0, 0], [0, r], ...dome], 16);
+  const boss = Math.min(R.lifterRadius, PP.liftHoleRadius - 0.001);
+  const lifter = lathe([[-R.lifterThickness - bossLength, 0], [-R.lifterThickness - bossLength, boss], [-R.lifterThickness, boss],
+    [-R.lifterThickness, R.lifterRadius], [0, R.lifterRadius], [0, 0]], 32);
+  return toGeometry([rod, lifter]);
+}
+
+/**
+ * The release arm, its pivot at the origin on an axis along z: a bar `armDepth` deep in x and
+ * `armWidth` wide in z, hanging from `armAbove` above the pivot to armDrop + armBelow below it,
+ * where its -x face meets the pushrod's domed end (armDrop below the pivot).
+ */
+export function releaseArm(): BufferGeometry {
+  const hx = R.armDepth / 2, hz = R.armWidth / 2;
+  const bar = prism([new Vector2(-(R.armDrop + R.armBelow), -hz), new Vector2(R.armAbove, -hz), new Vector2(R.armAbove, hz),
+    new Vector2(-(R.armDrop + R.armBelow), hz)], [], -hx, hx);
+  const boss = transform(lathe([[-hz - 0.002, 0], [-hz - 0.002, R.pivotRadius], [hz + 0.002, R.pivotRadius], [hz + 0.002, 0]], 20),
+    new Matrix4().makeRotationY(Math.PI / 2));
+  return toGeometry([bar, boss]);
 }

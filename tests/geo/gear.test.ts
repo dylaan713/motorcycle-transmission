@@ -2,7 +2,7 @@ import { test, expect } from 'vitest';
 import type * as THREE from 'three';
 import { dogRing, gearProfile, meshPhase, spurGear } from '../../src/geo/gear';
 import { sprocket, sprocketOutline, sprocketPitchRadius } from '../../src/geo/sprocket';
-import { CENTRE_DISTANCE, MODULE } from '../../src/model/geometry';
+import { CENTRE_DISTANCE, MODULE, PRIMARY_CENTRE_DISTANCE, PRIMARY_MODULE } from '../../src/model/geometry';
 import { PARAMS } from '../../src/sim/params';
 import { expectCleanSolid, meshPenetration, radii } from './helpers';
 
@@ -126,9 +126,9 @@ test('every gearbox pair meshes without penetration through a full tooth pitch',
 
 test('the primary pair meshes without penetration', () => {
   const [zA, zB] = [PARAMS.primary.drive, PARAMS.primary.driven];
-  const A = gearProfile(zA, MODULE), B = gearProfile(zB, MODULE);
+  const A = gearProfile(zA, PRIMARY_MODULE), B = gearProfile(zB, PRIMARY_MODULE);
   for (const psi of PSIS) {
-    const depth = meshPenetration(A, zA, B, zB, ((zA + zB) * MODULE) / 2, psi, meshPhase(zA, zB, psi));
+    const depth = meshPenetration(A, zA, B, zB, PRIMARY_CENTRE_DISTANCE, psi, meshPhase(zA, zB, psi));
     expect(depth, `primary at psi ${psi.toFixed(3)}`).toBeLessThan(MESH_TOLERANCE);
   }
 });

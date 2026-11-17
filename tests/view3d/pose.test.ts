@@ -5,10 +5,10 @@ import type { TorquePath } from '../../src/model/torquePath';
 import type { Assembly } from '../../src/view3d/assembly';
 import { buildDetentTable, detentArmAngle, detentArmFromTable, poseAssembly } from '../../src/view3d/pose';
 import {
-  DRUM_AXIS, DRUM_TURN, FOLLOWER_OFFSETS, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, PEDAL_LIFT, PEDAL_REST, PEDAL_SWING, PRIMARY_PSI,
-  REAR_PITCH_RADIUS, SLIDER_AXIS, TURN, clutchX, forkReach,
+  DRUM_AXIS, DRUM_TURN, FOLLOWER_OFFSETS, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, PEDAL_LIFT, PRIMARY_PSI,
+  INPUT_AXIS, REAR_PITCH_RADIUS, ROD_END_X, ROD_ORIGIN_X, SLIDER_AXIS, TURN, clutchX, forkReach,
 } from '../../src/view3d/layout3d';
-import { CENTRE_DISTANCE, MODULE, SLIDER_TRAVEL, gearAngle } from '../../src/model/geometry';
+import { CENTRE_DISTANCE, MODULE, PRIMARY_CENTRE_DISTANCE, PRIMARY_MODULE, SLIDER_TRAVEL, gearAngle } from '../../src/model/geometry';
 import type { GearNo, PartId } from '../../src/model/parts';
 import { torquePath } from '../../src/model/torquePath';
 import { PARAMS } from '../../src/sim/params';
@@ -24,6 +24,7 @@ import { DETENT_ARM, FORK_PIN_REACH, grooveAxialOffset, starWheelRadiusAt } from
 import { grooveCommand } from '../../src/sim/shiftDrum';
 import { inGear, inp, run } from '../sim/helpers';
 import { meshPenetration } from '../geo/helpers';
+import { PEDAL_SWING } from '../../src/view3d/ratchet';
 import { meshesOf, relAngle, toWorld, torqueAmount, worldAngle, wrapPi } from './helpers';
 
 const EMPTY: TorquePath = { parts: [], torque: 0, slipping: false, reach: 'none' };
@@ -82,8 +83,10 @@ test('posed gear pairs mesh without interpenetrating', () => {
     }
     // primary: the crank's 36T and the basket's 76T ring (which is drawn in the turned clutch frame)
     const A = body('primaryDrive'), B = body('clutchBasket');
-    const depth = meshPenetration(rotated(gearProfile(36, MODULE), worldAngle(A)), 36, gearProfile(76, MODULE), 76,
-      (36 + 76) * MODULE / 2, PRIMARY_PSI, worldAngle(B), 1);
+    const pa = A.getWorldPosition(new THREE.Vector3()), pb = B.getWorldPosition(new THREE.Vector3());
+    expect(Math.hypot(pb.y - pa.y, pb.z - pa.z)).toBeCloseTo(PRIMARY_CENTRE_DISTANCE, 12);
+    const depth = meshPenetration(rotated(gearProfile(36, PRIMARY_MODULE), worldAngle(A)), 36, gearProfile(76, PRIMARY_MODULE), 76,
+      PRIMARY_CENTRE_DISTANCE, PRIMARY_PSI, worldAngle(B), 1);
     expect(depth, `primary, ${name}`).toBeLessThan(0.00005);
   }
   // control: half a tooth off, the same check does find interference
@@ -281,21 +284,42 @@ test('clutch plates part as capacity falls; springs end on the hub seats', () =>
   expect(a.node('pressurePlate').getWorldPosition(new THREE.Vector3()).x - open).toBeCloseTo(15 * DIM.clutch.gapOpen, 9);
 });
 
-test('pedal and shift shaft rock ±12° with pedal travel', () => {
+test('clutch release: the pushrod and lifter move with the pressure plate, the arm\'s face stays on the rod\'s domed end', () => {
+  const R = DIM.release;
+  let last = 0;
+  for (const capacity of [clutchCapacityMax, (2 * clutchCapacityMax) / 3, clutchCapacityMax / 3, 0]) {
+    const s = createSimulation().getState(); s.clutch.capacity = capacity; pose(s);
+    const stack = plateStackOffsets(1 - capacity / clutchCapacityMax);
+    const lift = stack.pressurePlate - plateStackOffsets(0).pressurePlate;
+    const rod = a.rig.release.rod;
+    expect(rod.getWorldPosition(new THREE.Vector3()).x).toBeCloseTo(ROD_ORIGIN_X - lift, 12);
+    // the lifter's flange bears on the gearbox side of the pressure plate's centre
+    expect(rod.getWorldPosition(new THREE.Vector3()).x - R.lifterThickness).toBeCloseTo(clutchX(stack.pressurePlate + DIM.pressurePlate.cover), 12);
+    // the arm's -x face is tangent to the dome: the dome's centre is domeRadius from the face's plane
+    const arm = a.rig.release.arm;
+    const toArm = new THREE.Matrix4().copy(arm.matrixWorld).invert();
+    const dome = new THREE.Vector3(ROD_END_X - lift - R.domeRadius, INPUT_AXIS.y, INPUT_AXIS.z).applyMatrix4(toArm);
+    expect(-R.armDepth / 2 - dome.x, `capacity ${capacity}`).toBeCloseTo(R.domeRadius, 9);
+    expect(Math.abs(dome.y + R.armDrop)).toBeLessThan(R.rodRadius + R.armBelow); // on the arm, not past its end
+    const swing = Math.abs(arm.rotation.z);
+    if (lift > 0) expect(swing).toBeGreaterThan(last); else expect(swing).toBe(0);
+    last = swing;
+  }
+  expect(last).toBeGreaterThan(deg(15)); // a swing the eye can see
+});
+
+test('pedal and shift shaft turn together with pedal travel, up lifting the toe', () => {
+  // the drum where a full stroke has taken it, so nothing stops the shaft (ratchet.test.ts has the stops)
   const s = createSimulation().getState();
-  // travel +1 lifts the toe: the lever turns by PEDAL_LIFT × PEDAL_SWING, whichever way it points
-  s.pedal.travel = 1; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_LIFT * PEDAL_SWING, 12);
-  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_LIFT * PEDAL_SWING, 12);
-  expect(Math.cos(PEDAL_REST + PEDAL_LIFT * PEDAL_SWING)).toBeGreaterThan(Math.cos(PEDAL_REST)); // up is up
+  s.drum.angle = deg(PARAMS.drum.strokeDeg); s.pedal.strokeStartAngle = 0; s.pedal.travel = 1; pose(s);
+  expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_SWING, 12);
+  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_SWING, 12);
   const tip = toWorld(body('pedal'), 0, DIM.pedal.length, 0);
-  s.pedal.travel = 0; pose(s);
-  expect(tip.y).toBeGreaterThan(toWorld(body('pedal'), 0, DIM.pedal.length, 0).y);
-  s.pedal.travel = -0.5; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(-0.5 * PEDAL_LIFT * PEDAL_SWING, 12);
-  s.pedal.travel = 0; pose(s);
+  s.pedal.travel = 0; s.pedal.strokeStartAngle = s.drum.angle; pose(s);
+  expect(tip.y, 'travel +1 lifts the toe').toBeGreaterThan(toWorld(body('pedal'), 0, DIM.pedal.length, 0).y);
+  expect(tip.z, 'the toe trails rearward').toBeLessThan(a.node('pedal').position.z);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(0, 12);
-  expect(PEDAL_SWING).toBeCloseTo(deg(12), 12);
+  expect(PEDAL_LIFT).toBe(1);
 });
 
 test('chain: links close the loop and rollers sit in sprocket seats as it runs', () => {

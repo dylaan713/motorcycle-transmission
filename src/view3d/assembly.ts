@@ -1,6 +1,6 @@
-import { Box3, Group, InstancedMesh, Raycaster, Sphere, Vector3 } from 'three';
+import { Box3, Group, InstancedBufferGeometry, InstancedMesh, LineSegments, Raycaster, Sphere, Vector2, Vector3 } from 'three';
 import type { BufferGeometry, Mesh, Object3D } from 'three';
-import { FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, MODULE, gearAxialPosition, gearKind, sliderOfGear } from '../model/geometry';
+import { FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, MODULE, PRIMARY_MODULE, gearAxialPosition, gearKind, sliderOfGear } from '../model/geometry';
 import { PARTS } from '../model/parts';
 import type { GearNo, PartId } from '../model/parts';
 import type { TorquePath } from '../model/torquePath';
@@ -12,21 +12,27 @@ import { deg } from '../sim/units';
 import { collaredGear, dogRing, meshPhase, spurGear } from '../geo/gear';
 import { crankshaft, plainShaft, sleeve } from '../geo/shaft';
 import { sprocket } from '../geo/sprocket';
-import { CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, plateStackOffsets, pressurePlate, springLength, steelPlate } from '../geo/clutch';
-import { detentArm, pedalLever, shiftDrum, shiftFork, shiftPawl, starWheel } from '../geo/shift';
+import {
+  CLUTCH, basketBush, clutchBasket, clutchHub, clutchSpring, frictionPlate, plateStackOffsets, pressurePlate, releaseArm, releaseRod,
+  springLength, steelPlate,
+} from '../geo/clutch';
+import { detentArm, pedalLever, shiftArm, shiftDrum, shiftFork, shiftPawl, shiftPins, starWheel } from '../geo/shift';
 import { chainLink, chainLinkCount, chainPath, rearWheel } from '../geo/finalDrive';
-import { partMaterial, setGhost, withEdges } from './materials';
+import { edgeMaterial, edgesOf, partMaterial, setGhost, withEdges } from './materials';
 import type { Tone } from './materials';
 import {
   CARRIER, CLAW_THICKNESS, CRANK_GHOST, CRANK_STUB_X1, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_FLANGE_RADIUS, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS,
   COLLAR_SIDE, CRANK, CRANK_AXIS, DETENT_PIVOT, DRUM_AXIS, DRUM_LENGTH, FOLLOWER_OFFSETS, FORK_ROD, FORK_RODS,
   FORK_ROD_X, FORK_THIN_REACH, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI, INPUT_AXIS, INPUT_SHAFT_X, OUTPUT_AXIS,
-  OUTPUT_SHAFT_X, PAWL_ANGLE, PAWL_X, PEDAL_REST, PEDAL_X, PRIMARY_PSI, PRIMARY_X, REAR_AXIS, REAR_PITCH_RADIUS,
+  ARM_X, LIFTER_BOSS, OUTPUT_SHAFT_X, PAWL_X, PEDAL_REST, PEDAL_X, PIN_X, PRIMARY_PSI, PRIMARY_X, REAR_AXIS, REAR_PITCH_RADIUS,
+  RELEASE_PIVOT, ROD_END_X, ROD_ORIGIN_X,
   SHIFT_SHAFT_AXIS, SHIFT_SHAFT_RADIUS, SHIFT_SHAFT_X, SLIDER_AXIS, SLIDER_SHOULDER_WIDTH, SLIDER_TOOTH_WIDTH,
   DRUM_TURN, SPROCKET_THICKNESS, SPROCKET_X, STAR_X, WHEEL_X, clutchX, directionOf, forkReach,
 } from './layout3d';
 import type { Axis } from './layout3d';
 import { buildDetentTable, poseAssembly } from './pose';
+import { ARM_PATH, PAWLS, PAWL_LENGTH, PIN_ANGLES } from './ratchet';
+import type { PawlId } from './ratchet';
 
 type Shaft = 'input' | 'output';
 type AnchorId = 'clutch' | 'inputShaft' | 'outputShaft' | 'shiftDrum' | 'forks' | 'finalDrive';
@@ -58,6 +64,10 @@ export interface Rig {
   detentTable: Float64Array;
   /** Clutch capacity at the last pose; the plate stack is moved only when it changes. */
   posedCapacity: number;
+  /** The release pushrod and lifter (moved along x), and the release arm (turned about z). */
+  release: { rod: Object3D; arm: Object3D };
+  /** The two pawls on the shift arm, each tilted about its pivot; their holders sit at their rest direction. */
+  pawls: Record<PawlId, { holder: Object3D; rest: number }>;
 }
 
 export interface Assembly {
@@ -71,7 +81,10 @@ export interface Assembly {
   contextParts: PartId[];
   /** World-space callout anchors, each on a surface of its group that the default camera sees. */
   anchors: Record<AnchorId, Vector3>;
-  /** Chain links: inner links in one InstancedMesh, outer links in another, alternating along the loop. */
+  /**
+   * Chain links: inner links in one InstancedMesh, outer links in another, alternating along the
+   * loop, each with instanced edge lines sharing its instance matrices.
+   */
   chain: { inner: InstancedMesh; outer: InstancedMesh };
   /** Sphere round the gearbox, clutch and shift mechanism, excluding the chain's long run and the rear wheel. */
   framing: { centre: Vector3; radius: number };
@@ -84,6 +97,8 @@ export interface Assembly {
 const TONE = {
   shaft: 'steel5', fixedGear: 'steel4', freeGear: 'steel3', basket: 'steel3', friction: 'steel2', steel: 'steel5',
   clutchPart: 'steel4', spring: 'steel5', drum: 'steel3', lever: 'steel4', chain: 'steel4', tyre: 'steel1', rim: 'steel3',
+  // inner links darker than outer ones, so the chain reads as links from any side, lit or not
+  innerLink: 'steel3', outerLink: 'steel5', bush: 'steel5',
 } as const satisfies Record<string, Tone>;
 
 const CONTEXT_PARTS: readonly PartId[] = ['rearWheel', 'crank'];
@@ -132,12 +147,14 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   const rig: Rig = {
     gears: [], freeDogs: [], forks: [], frictionPlates: [], steelPlates: [], springs: [], springBuiltLength: 0,
     chain: chainRig(), detentTable: new Float64Array(0), posedCapacity: Number.NaN, // the table is built in the shift step
+    release: { rod: new Group(), arm: new Group() }, pawls: { up: { holder: new Group(), rest: 0 }, down: { holder: new Group(), rest: 0 } },
   };
 
   // ---- shafts and crank ----
   const shafts = (): void => {
+    // hollow: the clutch pushrod runs through it
     solid(partNode('inputShaft', mid(INPUT_SHAFT_X), INPUT_AXIS),
-      plainShaft({ radius: DIM.inputShaftRadius, length: span(INPUT_SHAFT_X) }), TONE.shaft);
+      sleeve({ boreRadius: DIM.release.shaftBore, radius: DIM.inputShaftRadius, length: span(INPUT_SHAFT_X) }), TONE.shaft);
     solid(partNode('outputShaft', mid(OUTPUT_SHAFT_X), OUTPUT_AXIS),
       plainShaft({ radius: DIM.outputShaftRadius, length: span(OUTPUT_SHAFT_X) }), TONE.shaft);
     // the crank is context: a solid stub through the primary drive gear, one throw as a ghost
@@ -201,9 +218,11 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   // ---- clutch, in its frame turned half a turn about y ----
   const clutch = (): void => {
     solid(partNode('primaryDrive', PRIMARY_X, CRANK_AXIS),
-      spurGear({ teeth: PARAMS.primary.drive, module: MODULE, faceWidth: DIM.primary.faceWidth, boreRadius: CRANK.journalRadius }), TONE.fixedGear);
+      spurGear({ teeth: PARAMS.primary.drive, module: PRIMARY_MODULE, faceWidth: DIM.primary.faceWidth, boreRadius: CRANK.journalRadius }), TONE.fixedGear);
     const basketPhase = meshPhase(PARAMS.primary.drive, PARAMS.primary.driven, PRIMARY_PSI);
-    solid(partNode('clutchBasket', CLUTCH_X0, INPUT_AXIS), clutchBasket(), TONE.basket, { phase: basketPhase, flip: true });
+    const basket = partNode('clutchBasket', CLUTCH_X0, INPUT_AXIS);
+    solid(basket, clutchBasket(), TONE.basket, { phase: basketPhase, flip: true });
+    solid(basket, basketBush(), TONE.bush, { flip: true }); // the basket runs on the shaft on this bush
     // plates: each in a holder at its clutch frame x inside the flipped frame
     const plateFrame = (id: PartId, phase: number): Group => {
       const frame = new Group();
@@ -235,6 +254,14 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       s.position.z = CLUTCH.springPitchRadius * Math.sin(a);
       rig.springs.push(s);
     }
+    // release: pushrod and lifter, moved with the pressure plate, and the arm that pushes the rod
+    const release = partNode('clutchRelease', 0, INPUT_AXIS);
+    rig.release.rod = solid(release, releaseRod(ROD_END_X - ROD_ORIGIN_X, LIFTER_BOSS), TONE.steel, { x: ROD_ORIGIN_X });
+    const arm = new Group();
+    arm.position.set(RELEASE_PIVOT.x, RELEASE_PIVOT.y - INPUT_AXIS.y, RELEASE_PIVOT.z - INPUT_AXIS.z);
+    arm.add(withEdges(releaseArm(), TONE.lever));
+    release.add(arm);
+    rig.release.arm = arm;
   };
 
   // ---- shift mechanism ----
@@ -244,6 +271,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
     solid(drum, shiftDrum(DRUM_LENGTH, FORK_X, FOLLOWER_OFFSETS, DRUM_TURN), TONE.drum);
     const axle = [DRUM_LENGTH / 2 - 0.002, STAR_X + DIM.starWheel.thickness / 2 + 0.002] as const;
     solid(drum, plainShaft({ radius: DIM.starWheelMount.boreRadius, length: span(axle) }), TONE.shaft, { x: mid(axle) });
+    solid(drum, shiftPins(PIN_ANGLES, PIN_X[0], PIN_X[1]), TONE.drum); // on the star wheel's outer face
     solid(partNode('starWheel', STAR_X, DRUM_AXIS), starWheel(DRUM_TURN), TONE.drum);
     const forkGeometry = new Map<string, BufferGeometry>();
     for (const s of SLIDERS) {
@@ -263,9 +291,18 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       r.traverse((o) => { o.userData.partId = id; });
     }
     solid(partNode('detentArm', STAR_X, DETENT_PIVOT), detentArm(), TONE.lever);
-    const shaft = partNode('shiftShaft', PAWL_X, SHIFT_SHAFT_AXIS);
-    solid(shaft, plainShaft({ radius: SHIFT_SHAFT_RADIUS, length: span(SHIFT_SHAFT_X) }), TONE.shaft, { x: mid(SHIFT_SHAFT_X) - PAWL_X });
-    solid(shaft, shiftPawl(), TONE.lever, { phase: PAWL_ANGLE });
+    // shift shaft, its arm across the drum's end and the two pawls pivoted on it (see ratchet.ts)
+    const shaft = partNode('shiftShaft', 0, SHIFT_SHAFT_AXIS);
+    solid(shaft, plainShaft({ radius: SHIFT_SHAFT_RADIUS, length: span(SHIFT_SHAFT_X) }), TONE.shaft, { x: mid(SHIFT_SHAFT_X) });
+    const rel = (p: Axis): Vector2 => new Vector2(p.y - SHIFT_SHAFT_AXIS.y, p.z - SHIFT_SHAFT_AXIS.z);
+    solid(shaft, shiftArm(ARM_PATH.map(rel), ARM_X[0], ARM_X[1], PAWL_X[0]), TONE.lever);
+    const pawlGeometry = shiftPawl(PAWL_LENGTH);
+    for (const id of ['up', 'down'] as const) {
+      const p = PAWLS[id], rest = directionOf(p.pivot, p.nose);
+      const holder = solid(shaft, pawlGeometry, TONE.lever, { x: mid(PAWL_X), phase: rest });
+      holder.position.y = p.pivot.y - SHIFT_SHAFT_AXIS.y; holder.position.z = p.pivot.z - SHIFT_SHAFT_AXIS.z;
+      rig.pawls[id] = { holder, rest };
+    }
     solid(partNode('pedal', PEDAL_X, SHIFT_SHAFT_AXIS), pedalLever(), TONE.lever, { phase: PEDAL_REST });
   };
 
@@ -292,10 +329,22 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
     solid(rear, sleeve({ boreRadius: DIM.wheelParts.axleRadius, radius: CARRIER.radius, length: CARRIER.x1 - CARRIER.x0 }), TONE.chain,
       { x: (CARRIER.x0 + CARRIER.x1) / 2 - SPROCKET_X });
     const chain = partNode('chain', SPROCKET_X, OUTPUT_AXIS);
-    const inner = new InstancedMesh(chainLink(true), partMaterial(TONE.chain), count / 2);
-    const outer = new InstancedMesh(chainLink(false), partMaterial(TONE.chain), count / 2);
+    const inner = new InstancedMesh(chainLink(true), partMaterial(TONE.innerLink), count / 2);
+    const outer = new InstancedMesh(chainLink(false), partMaterial(TONE.outerLink), count / 2);
     inner.name = 'inner links'; outer.name = 'outer links';
     chain.add(inner, outer);
+    // edge lines for every link: a link's edges drawn once per instance, from the links' own matrices
+    for (const links of [inner, outer]) {
+      const g = new InstancedBufferGeometry();
+      g.setAttribute('position', edgesOf(links.geometry).getAttribute('position'));
+      g.setAttribute('instanceMatrix', links.instanceMatrix);
+      g.instanceCount = links.count;
+      const m = edgeMaterial();
+      m.defines = { USE_INSTANCING: '' }; // three's line shader then applies instanceMatrix
+      const lines = new LineSegments(g, m);
+      lines.frustumCulled = false; // its bounds are one link's; the links span the loop
+      chain.add(lines);
+    }
     chainMeshes = { inner, outer };
     const wheel = partNode('rearWheel', WHEEL_X, REAR_AXIS);
     const [tyre, rim, hub] = rearWheel();
@@ -359,7 +408,7 @@ function anchors(fork: Object3D): Record<AnchorId, Vector3> {
   const sprocketFace = SPROCKET_X + SPROCKET_THICKNESS / 2;
   const out = {
     // the basket's rim: its primary ring, in front, where the crank does not reach
-    clutch: on(ringFace, INPUT_AXIS, ANCHOR_ANGLE.clutch, PARAMS.primary.driven * MODULE / 2 - 2 * MODULE),
+    clutch: on(ringFace, INPUT_AXIS, ANCHOR_ANGLE.clutch, PARAMS.primary.driven * PRIMARY_MODULE / 2 - 2 * PRIMARY_MODULE),
     // the shafts' exposed sprocket-side ends
     inputShaft: on(INPUT_SHAFT_X[1] - ON_FACE, INPUT_AXIS, FACING, DIM.inputShaftRadius),
     outputShaft: on(OUTPUT_SHAFT_X[1] - ON_FACE, OUTPUT_AXIS, FACING, DIM.outputShaftRadius),

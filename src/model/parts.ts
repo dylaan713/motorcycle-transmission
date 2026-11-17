@@ -3,7 +3,7 @@ import type { GearId } from '../sim/types';
 export type GearNo = GearId;
 export type PartId =
   | 'crank' | 'primaryDrive' | 'clutchBasket' | 'frictionPlates' | 'steelPlates' | 'clutchHub'
-  | 'pressurePlate' | 'inputShaft' | 'outputShaft'
+  | 'pressurePlate' | 'clutchRelease' | 'inputShaft' | 'outputShaft'
   | `gear${GearNo}in` | `gear${GearNo}out`
   | 'forkA' | 'forkB' | 'forkC' | 'shiftDrum' | 'starWheel' | 'detentArm' | 'shiftShaft' | 'pedal'
   | 'sprocket' | 'chain' | 'rearSprocket' | 'rearWheel';
@@ -47,16 +47,17 @@ export const PARTS: Record<PartId, PartInfo> = {
   steelPlates: { id: 'steelPlates', name: 'Steel plates', role: 'Plain plates keyed to the hub that take torque from the friction plates and can slip against them.' },
   clutchHub: { id: 'clutchHub', name: 'Clutch hub', role: 'Carries the steel plates and is splined to the input shaft, so the clutch torque turns the shaft.' },
   pressurePlate: { id: 'pressurePlate', name: 'Pressure plate', role: 'Clamped by the clutch springs, it squeezes the plate stack; pulling the lever lifts it off the stack to release the clutch.' },
+  clutchRelease: { id: 'clutchRelease', name: 'Clutch release', role: 'Pulled by the lever\'s cable, its arm pushes a rod through the hollow input shaft that lifts the pressure plate off the plates.' },
   inputShaft: { id: 'inputShaft', name: 'Input shaft', role: 'Turned by the clutch hub, it carries the driving gear of every pair.' },
   outputShaft: { id: 'outputShaft', name: 'Output shaft', role: 'Carries the driven gear of every pair and turns the front sprocket at the speed of the locked pair.' },
   ...gearParts,
   forkA: { id: 'forkA', name: 'Shift fork A', role: 'Rides a groove in the drum and slides the fifth-gear slider to lock first or third.' },
   forkB: { id: 'forkB', name: 'Shift fork B', role: 'Rides a groove in the drum and slides the sixth-gear slider to lock fourth or second.' },
   forkC: { id: 'forkC', name: 'Shift fork C', role: 'Rides a groove in the drum and slides the third-and-fourth piece to lock fifth or sixth.' },
-  shiftDrum: { id: 'shiftDrum', name: 'Shift drum', role: 'A grooved drum whose angle sets where every fork sits, so each detent selects one gear.' },
-  starWheel: { id: 'starWheel', name: 'Star wheel', role: 'A notched wheel on the drum end that the detent arm and the shift pawl work against.' },
+  shiftDrum: { id: 'shiftDrum', name: 'Shift drum', role: 'A grooved drum whose angle sets where every fork sits, turned by the pawls through the pins on its end, so each detent selects one gear.' },
+  starWheel: { id: 'starWheel', name: 'Star wheel', role: 'A notched wheel on the drum end that the detent arm\'s roller drops into to hold each gear.' },
   detentArm: { id: 'detentArm', name: 'Detent arm', role: 'A sprung roller that drops into the star wheel notches and holds the drum at each gear.' },
-  shiftShaft: { id: 'shiftShaft', name: 'Shift shaft', role: 'Turned by the pedal, its pawl ratchets the drum on by one detent per stroke.' },
+  shiftShaft: { id: 'shiftShaft', name: 'Shift shaft', role: 'Turned by the pedal, its arm\'s pawl catches a pin on the drum end and turns the drum on by one detent per stroke.' },
   pedal: { id: 'pedal', name: 'Gear pedal', role: 'The rider pushes it down or lifts it up to step the drum one gear down or up.' },
   sprocket: { id: 'sprocket', name: 'Front sprocket', role: 'Fixed to the output shaft, it pulls the chain.' },
   chain: { id: 'chain', name: 'Drive chain', role: 'Carries the drive from the front sprocket back to the rear sprocket.' },
@@ -66,7 +67,7 @@ export const PARTS: Record<PartId, PartInfo> = {
 
 /** The parts in four groups, each in the order the information panel lists them. */
 export const PART_GROUPS: ReadonlyArray<{ title: string; parts: readonly PartId[] }> = [
-  { title: 'Clutch', parts: ['crank', 'primaryDrive', 'clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'pressurePlate'] },
+  { title: 'Clutch', parts: ['crank', 'primaryDrive', 'clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'pressurePlate', 'clutchRelease'] },
   {
     title: 'Shafts and gears',
     parts: ['inputShaft', 'outputShaft', ...([1, 2, 3, 4, 5, 6] as const).flatMap((g): PartId[] => [`gear${g}in`, `gear${g}out`])],

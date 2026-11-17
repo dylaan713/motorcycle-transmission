@@ -44,7 +44,7 @@ export function drawClutch(p: Painter, shapes: readonly PartShape[], basketAngle
   p.part('clutchHub', drum.x, drum.y, drum.x + drum.w, drum.y + drum.h, COLORS.steel2, null);
   // the release rod runs in the hollow input shaft; only its lifter shows, outboard of the plate
   const rod = shapes[I_ROD];
-  p.part('pressurePlate', rod.x, rod.y, rod.x + rod.w, rod.y + rod.h, COLORS.steel2);
+  p.part('clutchRelease', rod.x, rod.y, rod.x + rod.w, rod.y + rod.h, COLORS.steel2);
   for (let i = 0; i < PLATE_COUNT; i++) {
     const s = shapes[I_PLATE0 + i];
     const friction = i % 2 === 0;

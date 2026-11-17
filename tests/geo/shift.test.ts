@@ -1,9 +1,9 @@
 import { test, expect } from 'vitest';
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { SLIDER_TRAVEL } from '../../src/model/geometry';
 import { deg } from '../../src/sim/units';
 import {
-  DETENT_ARM, FORK_PIN_REACH, STAR_SEAT_RADIUS, detentArm, grooveAxialOffset, pedalLever, shiftDrum, shiftFork, shiftPawl, starWheel, starWheelRadiusAt,
+  DETENT_ARM, FORK_PIN_REACH, STAR_SEAT_RADIUS, detentArm, grooveAxialOffset, pedalLever, shiftArm, shiftDrum, shiftFork, shiftPawl, shiftPins, starWheel, starWheelRadiusAt,
 } from '../../src/geo/shift';
 import { expectCleanSolid } from './helpers';
 
@@ -90,7 +90,9 @@ test('a groove edge in the first axial cell leaves the drum ends where the caps 
 test('every generator in this file builds a clean closed solid', () => {
   const all: [string, THREE.BufferGeometry][] = [
     ['drum', shiftDrum(0.12, { A: -0.03, B: 0.0, C: 0.03 })], ['fork', shiftFork({ reach: 0.06, collarRadius: 0.03 })],
-    ['star wheel', starWheel()], ['detent arm', detentArm()], ['pawl', shiftPawl()], ['pedal', pedalLever()],
+    ['star wheel', starWheel()], ['detent arm', detentArm()], ['pawl', shiftPawl(0.011)], ['pedal', pedalLever()],
+    ['star wheel, mirrored', starWheel(1)], ['pins', shiftPins([0, 1, 2], 0.05, 0.06)],
+    ['shift arm', shiftArm([new THREE.Vector2(0.04, 0.03), new THREE.Vector2(0.01, 0.02), new THREE.Vector2(0, 0), new THREE.Vector2(0.01, -0.02), new THREE.Vector2(0.04, -0.03)], 0.06, 0.064, 0.055)],
   ];
   for (const [name, g] of all) expectCleanSolid(g, name);
 });

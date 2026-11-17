@@ -171,3 +171,12 @@ describe('drawn angles of the parts that are not gears', () => {
     expect((d1.basket - d0.basket) / turned).toBeCloseTo(1, 3);
   });
 });
+
+test('the primary drive is a middleweight\'s: module 2, the 76T ring\'s tip on the 78 mm basket, centres 112 mm apart', async () => {
+  const { PRIMARY_MODULE, PRIMARY_CENTRE_DISTANCE } = await import('../../src/model/geometry');
+  const { PARAMS } = await import('../../src/sim/params');
+  const { DIM } = await import('../../src/geo/dimensions');
+  expect(PRIMARY_MODULE).toBe(0.002);
+  expect(PRIMARY_CENTRE_DISTANCE).toBeCloseTo(0.112, 12);
+  expect((PARAMS.primary.driven * PRIMARY_MODULE) / 2 + DIM.addendum * PRIMARY_MODULE).toBeCloseTo(DIM.clutch.basketOuterRadius, 12);
+});

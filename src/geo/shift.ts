@@ -190,20 +190,64 @@ export function detentArm(): BufferGeometry {
 }
 
 /**
- * Ratchet pawl on the shift shaft: one Y-shaped plate along +y, its two hooks catching the drum's
- * pins, built as a single outline so no faces coincide.
+ * A ratchet pawl: one plate from its pivot boss at the origin along +y to a round nose at `length`,
+ * `thickness` thick about x = 0. The nose's circle is the one that pushes the drum's shift pins.
  */
-export function shiftPawl(): BufferGeometry {
-  const t = 0.004, arm = 0.022, r1 = 0.007, root = 0.004, hookLength = 0.011, tip = 0.0025;
-  const spread = deg(35), crotch = new Vector2(arm + 0.006, 0);
-  const tipCentre = polar(hookLength, -spread).add(new Vector2(arm, 0));
-  // lower hook, outer side then round its tip into the crotch; the upper hook is its mirror image
-  const lower = [polar(root, -spread - Math.PI / 2).add(new Vector2(arm, 0)),
-    ...arc(tip, -spread - Math.PI / 2, -spread + Math.PI / 2, undefined, tipCentre)];
-  const upper = lower.map((p) => new Vector2(p.x, -p.y)).reverse();
-  const outline = [...arc(r1, Math.PI / 2, (3 * Math.PI) / 2), ...lower, crotch, ...upper];
-  const boss = lathe([[-0.003, 0], [-0.003, r1 + 0.001], [t + 0.003, r1 + 0.001], [t + 0.003, 0]], 24); // wider than the arm's end
-  return toGeometry([prism(outline, [], 0, t), boss]);
+export function shiftPawl(length: number): BufferGeometry {
+  const { pivotRadius: rp, noseRadius: rn, thickness: t } = DIM.pawl;
+  return toGeometry([prism(capsule(rp, rn, length), [], -t / 2, t / 2)]);
+}
+
+/**
+ * The drum's shift pins: `angles.length` round pins of DIM.shiftPins.radius on a circle of
+ * DIM.shiftPins.pitchRadius about the drum axis, standing from x0 to x1.
+ */
+export function shiftPins(angles: readonly number[], x0: number, x1: number): BufferGeometry {
+  const { radius: r, pitchRadius } = DIM.shiftPins, c = 0.0004;
+  return toGeometry(angles.map((a) => {
+    const p = polar(pitchRadius, a);
+    return translate(lathe([[x0, 0], [x0, r], [x1 - c, r], [x1, r - c], [x1, 0]], 16), 0, p.x, p.y);
+  }));
+}
+
+/**
+ * Outline of a strip `halfWidth` either side of an open polyline, with round ends: the left side
+ * forward with mitred joints, round the far end, the right side back, round the near end.
+ */
+function strip(path: readonly Vector2[], halfWidth: number): Vector2[] {
+  const n = path.length;
+  const normal = (a: Vector2, b: Vector2): Vector2 => { const d = b.clone().sub(a).normalize(); return new Vector2(-d.y, d.x); };
+  const side = (sign: 1 | -1): Vector2[] => path.map((p, i) => {
+    if (i === 0) return p.clone().addScaledVector(normal(p, path[1]), sign * halfWidth);
+    if (i === n - 1) return p.clone().addScaledVector(normal(path[i - 1], p), sign * halfWidth);
+    const n0 = normal(path[i - 1], p), n1 = normal(p, path[i + 1]), m = n0.clone().add(n1).normalize();
+    return p.clone().addScaledVector(m, (sign * halfWidth) / Math.max(0.5, m.dot(n1)));
+  });
+  const dirAt = (a: Vector2, b: Vector2): number => Math.atan2(b.y - a.y, b.x - a.x);
+  const endA = dirAt(path[n - 2], path[n - 1]), startA = dirAt(path[0], path[1]);
+  return [
+    ...side(1),
+    ...arc(halfWidth, endA + Math.PI / 2, endA - Math.PI / 2, undefined, path[n - 1]).slice(1, -1),
+    ...side(-1).reverse(),
+    ...arc(halfWidth, startA - Math.PI / 2, startA - (3 * Math.PI) / 2, undefined, path[0]).slice(1, -1),
+  ];
+}
+
+/**
+ * The shift arm, a yoke in the plane x0..x1: a strip along `path` (from one pawl pivot, round the
+ * outside of the drum's end past the shift shaft at the origin, to the other pivot), a boss on the
+ * shaft and one at each end, and a pivot pin at each end reaching down to `pinX0` through its pawl.
+ * The bosses stand a little proud of the strip so no faces coincide.
+ */
+export function shiftArm(path: readonly Vector2[], x0: number, x1: number, pinX0: number): BufferGeometry {
+  const { bossRadius, pivotBossRadius, width } = DIM.shiftArm, proud = 0.0005, r = DIM.pawl.pinRadius;
+  const solids = [prism(strip(path, width / 2), [], x0, x1),
+    lathe([[x0 - proud, 0], [x0 - proud, bossRadius], [x1 + proud, bossRadius], [x1 + proud, 0]], 32)];
+  for (const end of [path[0], path[path.length - 1]]) {
+    solids.push(translate(lathe([[x0 - proud, 0], [x0 - proud, pivotBossRadius], [x1 + proud, pivotBossRadius], [x1 + proud, 0]], 20), 0, end.x, end.y));
+    solids.push(translate(lathe([[pinX0, 0], [pinX0, r], [x0 - proud, r], [x0 - proud, 0]], 12), 0, end.x, end.y));
+  }
+  return toGeometry(solids);
 }
 
 /** Gear pedal: clamp boss on the shift shaft at the origin, lever along +y, toe peg out along +x. */

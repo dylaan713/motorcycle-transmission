@@ -30,7 +30,8 @@ export function edgeMaterial(): LineBasicMaterial {
 
 // Parts that share a geometry (plates, chain links) share its edge geometry too.
 const edgesCache = new WeakMap<BufferGeometry, Map<number, EdgesGeometry>>();
-function edgesOf(geometry: BufferGeometry, thresholdDeg: number): EdgesGeometry {
+/** The edge lines of a geometry (faces meeting at more than `thresholdDeg`), cached per geometry. */
+export function edgesOf(geometry: BufferGeometry, thresholdDeg = DEFAULT_EDGE_DEG): EdgesGeometry {
   let byAngle = edgesCache.get(geometry);
   if (!byAngle) { byAngle = new Map(); edgesCache.set(geometry, byAngle); }
   let e = byAngle.get(thresholdDeg);

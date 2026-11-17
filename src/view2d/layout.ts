@@ -3,7 +3,7 @@
  * table and where each part sits for a given state. Painting lives in paint.ts and draw/.
  */
 import {
-  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, SLIDER_TRAVEL, drawnDogPhase, gearAngle,
+  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, PRIMARY_CENTRE_DISTANCE, PRIMARY_MODULE, SLIDER_TRAVEL, drawnDogPhase, gearAngle,
   gearAxialPosition, pitchRadius, sliderOfGear,
 } from '../model/geometry';
 import type { GearNo, PartId } from '../model/parts';
@@ -32,15 +32,15 @@ export const WALLS = [[-66 * MM, -62 * MM], [62 * MM, 66 * MM]] as const; // gea
 export const WALL_Y = [-40 * MM, 112 * MM] as const;
 export const BEARING = 6 * MM; // radial depth of a bearing in the case wall
 
-// Primary drive: the driven gear sits on the back of the clutch basket, the drive gear on the crank.
-export const PRIMARY_MODULE = 1.75 * MM;
+// Primary drive: the driven gear sits on the back of the clutch basket, the drive gear on the crank,
+// at the model's primary module and centre distance, as in the 3D view.
 export const DRIVE_R = (PARAMS.primary.drive * PRIMARY_MODULE) / 2;
 export const DRIVEN_R = (PARAMS.primary.driven * PRIMARY_MODULE) / 2;
-export const CRANK_Y = IN_Y - (DRIVE_R + DRIVEN_R);
+export const CRANK_Y = IN_Y - PRIMARY_CENTRE_DISTANCE;
 export const PRIMARY_X = [-82 * MM, -70 * MM] as const;
 
 // Clutch, built leftward (outboard) from the hub's inner pressure face.
-export const BASKET_R = 74 * MM;
+export const BASKET_R = 78 * MM; // the driven ring's tip radius, as in the 3D view
 export const BASKET_RIM = 2.5 * MM;
 // The basket and its driven gear run free on the input shaft on a needle bearing in this bore.
 export const BASKET_BORE = SHAFT_R.input + 3 * MM;
@@ -140,7 +140,7 @@ export const DETENT_LABELS: readonly string[] = DETENT_NAMES.map(String);
 
 export const GEAR_LABEL_Y = -36 * MM;
 /** The whole drawing including labels, metres. */
-export const EXTENT = { x0: -164 * MM, x1: 182 * MM, y0: -140 * MM, y1: 204 * MM };
+export const EXTENT = { x0: -164 * MM, x1: 182 * MM, y0: -154 * MM, y1: 204 * MM }; // y0: the crank web's top
 /** CSS px kept clear round the drawing. */
 export const FIT_PAD = 8;
 
@@ -214,7 +214,7 @@ export const I_BASKET_BACK = [slot('clutchBasket'), slot('clutchBasket')] as con
 export const I_DRIVEN = [slot('clutchBasket'), slot('clutchBasket')] as const;
 export const I_HUB = slot('clutchHub');
 export const I_HUB_DRUM = slot('clutchHub');
-export const I_ROD = slot('pressurePlate'); // drawn under the plates: only its lifter shows
+export const I_ROD = slot('clutchRelease'); // the release rod, drawn under the plates: only its lifter shows
 export const I_PLATE0 = IDS.length;
 for (let i = 0; i < PLATE_COUNT; i++) slot(i % 2 === 0 ? 'frictionPlates' : 'steelPlates');
 export const I_PRESSURE = slot('pressurePlate');

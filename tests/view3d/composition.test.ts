@@ -89,7 +89,7 @@ function firstHit(eye: THREE.Vector3, target: THREE.Vector3): PartId | null {
 }
 
 const GROUPS: Record<keyof Assembly['anchors'], PartId[]> = {
-  clutch: ['clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'pressurePlate'],
+  clutch: ['clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'pressurePlate', 'clutchRelease'],
   inputShaft: ['inputShaft'],
   outputShaft: ['outputShaft'],
   forks: ['forkA', 'forkB', 'forkC'],
@@ -112,4 +112,26 @@ test('the default camera looks from the sprocket end, in front and above; the na
   expect(pos.y).toBeGreaterThan(0); // above
   const narrow = cameraPose(a.subject, NARROW, 0.9).position.clone().sub(a.subject.centre);
   expect(Math.abs(narrow.x) / Math.abs(narrow.z)).toBeLessThan(Math.abs(pos.x) / Math.abs(pos.z));
+});
+
+test('the chain reads as links: inner and outer links in two tones, each link with its own edge lines', () => {
+  const tone = (m: THREE.InstancedMesh) => (m.material as THREE.MeshLambertMaterial).userData.tone;
+  expect(tone(a.chain.inner)).toBe('steel3');
+  expect(tone(a.chain.outer)).toBe('steel5');
+  const lines: THREE.LineSegments[] = [];
+  a.node('chain').traverse((o) => { if ((o as THREE.LineSegments).isLineSegments) lines.push(o as THREE.LineSegments); });
+  expect(lines.length).toBe(2);
+  for (const [l, links] of [[lines[0], a.chain.inner], [lines[1], a.chain.outer]] as const) {
+    const g = l.geometry as THREE.InstancedBufferGeometry;
+    expect(g.isInstancedBufferGeometry).toBe(true);
+    expect(g.getAttribute('instanceMatrix')).toBe(links.instanceMatrix); // drawn where the links are, every frame
+    expect(g.instanceCount).toBe(links.count);
+    expect((l.material as THREE.LineBasicMaterial).defines).toHaveProperty('USE_INSTANCING');
+    expect(l.frustumCulled).toBe(false);
+  }
+  // under torque both tones stay distinct: two brightnesses of the signal
+  const s = run(inGear(3, 6000), inp({ throttle: 0.6 }), 0.2);
+  poseAssembly(a, s, torquePath(s));
+  const ci = (a.chain.inner.material as THREE.MeshLambertMaterial).color, co = (a.chain.outer.material as THREE.MeshLambertMaterial).color;
+  expect(ci.getHexString()).not.toBe(co.getHexString());
 });

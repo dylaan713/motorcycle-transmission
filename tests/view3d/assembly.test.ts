@@ -61,7 +61,7 @@ test('layout: the plan placement holds', () => {
   expect(distanceOf(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(CENTRE_DISTANCE, 12);
   // the bike's front is +z: the output shaft is behind (-z) the input, the crank ahead (+z) of the clutch
   expect(dir(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(-145, 9);          // 35° below horizontal toward -z
-  expect(distanceOf(CRANK_AXIS, INPUT_AXIS)).toBeCloseTo((36 + 76) * 0.0025 / 2, 12);
+  expect(distanceOf(CRANK_AXIS, INPUT_AXIS)).toBeCloseTo(0.112, 12);    // the primary at module 2
   expect(dir(INPUT_AXIS, CRANK_AXIS)).toBeCloseTo(50, 9);              // 50° above horizontal toward +z
   expect(DRUM_AXIS.y).toBeLessThan(OUTPUT_AXIS.y); expect(DRUM_AXIS.z).toBeGreaterThan(INPUT_AXIS.z); // below and in front
   expect(REAR_AXIS.y).toBe(OUTPUT_AXIS.y); expect(REAR_AXIS.z - OUTPUT_AXIS.z).toBeCloseTo(-0.56, 12); // behind

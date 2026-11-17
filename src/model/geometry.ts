@@ -10,6 +10,13 @@ export const MODULE = 0.0025;
 /** Every pair has 50 teeth in all, so every pair meshes at this distance, m. */
 export const CENTRE_DISTANCE: number = (50 * MODULE) / 2;
 export const FACE_WIDTH = 0.014;
+/**
+ * Primary drive module, m: finer than the gearbox's, as on a middleweight, so the 76-tooth ring on
+ * the clutch basket has a 78 mm tip radius and the crank sits 112 mm from the input shaft.
+ */
+export const PRIMARY_MODULE = 0.002;
+/** Crank axis to input shaft axis, m: the primary pair's pitch radii added. */
+export const PRIMARY_CENTRE_DISTANCE: number = ((PARAMS.primary.drive + PARAMS.primary.driven) * PRIMARY_MODULE) / 2;
 /** Axial order of the gear pairs, left to right. */
 export const GEAR_ORDER: readonly GearNo[] = [1, 5, 3, 4, 6, 2];
 /** Axial distance between neighbouring gears in GEAR_ORDER, m. */

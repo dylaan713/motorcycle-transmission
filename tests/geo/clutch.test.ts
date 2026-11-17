@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import type * as THREE from 'three';
 import {
-  CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, hubEnd, plateStackOffsets, pressurePlate, springLength, steelPlate,
+  CLUTCH, basketBush, releaseArm, releaseRod, clutchBasket, clutchHub, clutchSpring, frictionPlate, hubEnd, plateStackOffsets, pressurePlate, springLength, steelPlate,
 } from '../../src/geo/clutch';
 import { DIM } from '../../src/geo/dimensions';
 import { expectCleanSolid, radii } from './helpers';
@@ -59,7 +59,8 @@ test('friction tabs sit in the basket slots and steel teeth in the hub grooves',
 
 test('the basket carries the 76-tooth primary ring on its back and opens toward +x', () => {
   const g = clutchBasket(); g.computeBoundingBox();
-  expect(Math.max(...radii(g))).toBeCloseTo((76 * 0.0025) / 2 + 0.0025, 6);
+  // module 2 (PRIMARY_MODULE): the ring's tips reach the basket's 78 mm outer radius, no further
+  expect(Math.max(...radii(g))).toBeCloseTo((76 * 0.002) / 2 + 0.002, 6);
   expect(g.boundingBox!.min.x).toBeCloseTo(-0.016, 8);
   expect(g.boundingBox!.max.x).toBeCloseTo(CLUTCH.fingerBase + DIM.clutch.basketDepth, 8);
 });
@@ -123,4 +124,23 @@ test('every generator in this file builds a clean closed solid', () => {
     ['pressure plate', pressurePlate()], ['spring', clutchSpring(0.02)],
   ];
   for (const [name, g] of all) expectCleanSolid(g, name);
+});
+
+test('the basket runs on a bush: it fills the basket\'s bore, clears the shaft and stands proud of the primary ring', () => {
+  const g = basketBush(); g.computeBoundingBox();
+  expect(Math.max(...radii(g))).toBeCloseTo(DIM.basket.boreRadius, 6);
+  expect(Math.min(...radii(g))).toBeCloseTo(DIM.inputShaftRadius + DIM.basketBush.clearance, 6);
+  expect(Math.min(...radii(g))).toBeGreaterThan(DIM.inputShaftRadius);
+  expect(g.boundingBox!.min.x).toBeLessThan(-DIM.primary.faceWidth);
+  expect(g.boundingBox!.max.x).toBeCloseTo(CLUTCH.fingerBase, 9);
+  expectCleanSolid(g, 'basket bush');
+});
+
+test('release rod with its lifter, and the release arm, are clean solids of their sizes', () => {
+  const rod = releaseRod(0.12, 0.005); rod.computeBoundingBox();
+  expect(rod.boundingBox!.max.x).toBeCloseTo(0.12, 7); // float32 positions
+  expect(rod.boundingBox!.min.x).toBeCloseTo(-DIM.release.lifterThickness - 0.005, 7);
+  expect(Math.max(...radii(rod))).toBeCloseTo(DIM.release.lifterRadius, 6);
+  expectCleanSolid(rod, 'release rod');
+  expectCleanSolid(releaseArm(), 'release arm');
 });

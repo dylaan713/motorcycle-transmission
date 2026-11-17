@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { SLIDER_TRAVEL, gearAxialPosition } from '../../src/model/geometry';
+import { PRIMARY_CENTRE_DISTANCE, PRIMARY_MODULE, SLIDER_TRAVEL, gearAxialPosition } from '../../src/model/geometry';
 import type { GearNo, PartId } from '../../src/model/parts';
 import { createSimulation } from '../../src/sim/simulation';
 import type { SimState } from '../../src/sim/types';
@@ -83,8 +83,8 @@ test('released plates stay on their carriers: friction plates in the basket, ste
       expect(s.x).toBeGreaterThanOrEqual(hub0);
       expect(s.x + s.w).toBeLessThanOrEqual(hub1);
     }
-    // the pressure plate's release rod still reaches into the input shaft
-    const [, pp1] = span('pressurePlate');
+    // the release rod (its own part now, the clutch release) still reaches into the input shaft
+    const [, pp1] = span('clutchRelease');
     const [in0] = span('inputShaft');
     expect(pp1).toBeGreaterThan(in0);
   }
@@ -188,4 +188,24 @@ test('a plate near the axis picks the plate, not the release rod inside it', () 
   const st = base();
   const plate = schematicShapes(st).find((s) => s.id === 'steelPlates')!;
   expect(pickAt(st, plate.x + plate.w / 2, 1 * MM)).toBe('steelPlates');
+});
+
+test('the schematic draws the primary drive at the model\'s module and centre distance, as the 3D view does', () => {
+  // was a 1.75 mm module of its own, with the crank 98 mm above the input shaft
+  expect(DRIVE_R).toBeCloseTo((PARAMS.primary.drive * PRIMARY_MODULE) / 2, 12);
+  expect(DRIVEN_R).toBeCloseTo((PARAMS.primary.driven * PRIMARY_MODULE) / 2, 12);
+  expect(IN_Y - CRANK_Y).toBeCloseTo(PRIMARY_CENTRE_DISTANCE, 12);
+});
+
+test('every part has a shape in the schematic, the clutch release included, and the release is never on the torque path', async () => {
+  const { IDS } = await import('../../src/view2d/layout');
+  const { PARTS } = await import('../../src/model/parts');
+  expect([...new Set(IDS)].sort()).toEqual(Object.keys(PARTS).sort());
+  for (const [g, rpm, throttle, lever] of [[3, 6000, 0.6, 0], [1, 3000, 0.6, 0.5], [5, 9000, 1, 0]] as const) {
+    const sim = createSimulation(); sim.setState((await import('../../src/sim/states')).inGearPatch(g, rpm));
+    for (let t = 0; t < 0.2; t += PARAMS.dt) sim.step({ ...(await import('../../src/sim/types')).NEUTRAL_INPUTS, throttle, clutchLever: lever });
+    const p = torquePath(sim.getState());
+    expect(p.parts.length).toBeGreaterThan(0);
+    expect(p.parts).not.toContain('clutchRelease');
+  }
 });

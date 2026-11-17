@@ -12,7 +12,7 @@ export const DIM = {
   clutch: { basketOuterRadius: 0.078, basketDepth: 0.048, plateOuterRadius: 0.070, plateInnerRadius: 0.046,
             frictionThickness: 0.003, steelThickness: 0.0016, plates: 8, gapOpen: 0.0006,
             hubRadius: 0.044, springCount: 5, springRadius: 0.007 },
-  primary: { faceWidth: 0.016 },    // 36T on the crank, 76T ring on the basket, same MODULE
+  primary: { faceWidth: 0.016 },    // 36T on the crank, 76T ring on the basket, at PRIMARY_MODULE
   drum: { radius: 0.022, grooveDepth: 0.004, grooveWidth: 0.006 },
   fork: { thickness: 0.005, rodRadius: 0.006, pinRadius: 0.0028 },
   starWheel: { radius: 0.020, thickness: 0.006 },
@@ -34,6 +34,14 @@ export const DIM = {
   spring: { wire: 0.0011, turns: 5, deadTurns: 0.75 },
   starWheelMount: { boreRadius: 0.006 },
   detentArm: { length: 0.032, rollerRadius: 0.005, pivotRadius: 0.0075 },
+  // the drum's shift pins stand on the star wheel's outer face; the pawls on the shift arm push them
+  shiftPins: { radius: 0.002, pitchRadius: 0.013, length: 0.0095 },
+  pawl: { noseRadius: 0.0018, pivotRadius: 0.0026, thickness: 0.004, pinRadius: 0.0015, pivotRadiusAboutDrum: 0.026, pivotTrailDeg: 10 },
+  shiftArm: { thickness: 0.004, bossRadius: 0.0105, pivotBossRadius: 0.004, width: 0.007, yokeRadius: 0.032, noseOffset: 0.012 },
+  // a pushrod through the hollow input shaft, a lifter on the pressure plate, a release arm at the far end
+  release: { rodRadius: 0.0035, shaftBore: 0.0045, domeRadius: 0.006, lifterRadius: 0.012, lifterThickness: 0.003,
+             armDepth: 0.005, armWidth: 0.01, armDrop: 0.02, armBelow: 0.008, armAbove: 0.012, pivotRadius: 0.005 },
+  basketBush: { clearance: 0.0003, proud: 0.0015 },
   pedal: { length: 0.15, bossRadius: 0.011, bossLength: 0.024, pegRadius: 0.007, pegLength: 0.04 },
   wheelParts: { rimDepth: 0.015, flangeHeight: 0.011, flangeInset: 0.005, hubHalfWidth: 0.06,
                 axleRadius: 0.012, spokes: 5, spokeHalfThickness: 0.012 },

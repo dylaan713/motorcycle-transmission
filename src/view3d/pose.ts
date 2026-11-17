@@ -14,10 +14,11 @@ import { DETENT_ARM, STAR_SEAT_DEPTH, STAR_SEAT_EDGES, starWheelRadiusAt } from 
 import { DRUM_MAX, DRUM_MIN } from '../sim/shiftDrum';
 import { setTorque } from './materials';
 import {
-  DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, DRUM_TURN, FORK_X, PEDAL_LIFT, PEDAL_SWING, TURN,
+  DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, DRUM_TURN, FORK_X, RELEASE_PIVOT, ROD_END_X, ROD_ORIGIN_X, TURN,
   clutchX, directionOf, distanceOf,
 } from './layout3d';
 import type { Assembly } from './assembly';
+import { ratchetPose } from './ratchet';
 
 const PART_IDS = Object.keys(PARTS) as PartId[];
 /** Torque that lights a part fully, N·m; anything carrying torque shows at least TORQUE_FLOOR. */
@@ -111,6 +112,23 @@ export function detentArmFromTable(table: Float64Array, drumAngle: number): numb
 }
 
 const spin = (node: Object3D, angle: number): void => { node.rotation.x = wrapPi(angle); };
+const ratchet = { turn: 0, up: 0, down: 0 };
+const REST_PRESSURE_PLATE = plateStackOffsets(0).pressurePlate;
+
+/**
+ * Release arm angle about z (its pivot's axis) with the pushrod pushed `lift` toward -x: where the
+ * arm's -x face is tangent to the rod's domed end. The dome's centre sits domeRadius behind the
+ * rod's tip, armDrop below the pivot; the face is armDepth/2 from the pivot. Solved by bisection:
+ * the face turns away from the rod as the angle falls.
+ */
+export function releaseArmAngle(lift: number): number {
+  const h = DIM.release.armDrop, xc = ROD_END_X - DIM.release.domeRadius - RELEASE_PIVOT.x;
+  const f = (phi: number): number => (lift - xc) * Math.cos(phi) + h * Math.sin(phi) + xc;
+  let lo = -1.2, hi = 0;
+  if (!(lift > 0)) return 0;
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (f(m) > 0) hi = m; else lo = m; }
+  return (lo + hi) / 2;
+}
 /** Turn a drivetrain node by a drawn angle (TURN × angle about +x). */
 const drive = (node: Object3D, drawn: number): void => spin(node, TURN * drawn);
 const ON_INPUT: readonly PartId[] = ['inputShaft', 'clutchHub', 'steelPlates', 'pressurePlate'];
@@ -151,15 +169,22 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
     a.node('pressurePlate').position.x = clutchX(stack.pressurePlate);
     const stretch = springLength(stack.pressurePlate) / rig.springBuiltLength;
     for (const s of rig.springs) s.scale.x = stretch;
+    // the release pushrod and lifter move with the pressure plate; the arm swings to push the rod
+    const lift = stack.pressurePlate - REST_PRESSURE_PLATE;
+    rig.release.rod.position.x = ROD_ORIGIN_X - lift;
+    rig.release.arm.rotation.z = releaseArmAngle(lift);
   }
 
   // shift drum and star wheel: each follower reads the drum angle
   spin(a.node('shiftDrum'), DRUM_REFERENCE + DRUM_TURN * state.drum.angle);
   spin(a.node('starWheel'), DETENT_CONTACT + DRUM_TURN * state.drum.angle);
   spin(a.node('detentArm'), detentArmFromTable(rig.detentTable, state.drum.angle));
-  // pedal travel (-1 down .. +1 up) turns the shift shaft and lifts or lowers the pedal's toe
-  const travel = clamp(state.pedal.travel, -1, 1);
-  spin(a.node('shiftShaft'), PEDAL_LIFT * travel * PEDAL_SWING); spin(a.node('pedal'), PEDAL_LIFT * travel * PEDAL_SWING);
+  // pedal travel (-1 down .. +1 up) turns the shift shaft, its arm and the pedal together; each
+  // pawl tilts to ride over any pin it is not pushing (see ratchet.ts)
+  ratchetPose(state, ratchet);
+  spin(a.node('shiftShaft'), ratchet.turn); spin(a.node('pedal'), ratchet.turn);
+  rig.pawls.up.holder.rotation.x = rig.pawls.up.rest + ratchet.up;
+  rig.pawls.down.holder.rotation.x = rig.pawls.down.rest + ratchet.down;
 
   // chain: one link per tooth of front sprocket travel, each link along the chord to the next
   // roller. The front sprocket turns by TURN × the drawn output angle, which grows under drive, and

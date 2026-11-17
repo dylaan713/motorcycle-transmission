@@ -1,10 +1,13 @@
-import { CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, MODULE, gearAxialPosition, pitchRadius, sliderOfGear } from '../model/geometry';
+import {
+  CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, MODULE, PRIMARY_CENTRE_DISTANCE, gearAxialPosition, pitchRadius, sliderOfGear,
+} from '../model/geometry';
 import type { GearNo } from '../model/parts';
 import { PARAMS } from '../sim/params';
 import type { SliderId } from '../sim/types';
 import { deg } from '../sim/units';
 import { DIM } from '../geo/dimensions';
 import { DETENT_ARM, FORK_CLAW_DEPTH, FORK_PIN_REACH, STAR_SEAT_DEPTH } from '../geo/shift';
+import { CLUTCH, plateStackOffsets } from '../geo/clutch';
 import { sprocketPitchRadius } from '../geo/sprocket';
 
 /**
@@ -50,7 +53,6 @@ export const tipRadius = (shaft: 'input' | 'output', g: GearNo): number => pitch
 export const INPUT_AXIS: Axis = { y: 0, z: 0 };
 /** CENTRE_DISTANCE from the input axis, behind it: 35° below horizontal toward the rear (-z). */
 export const OUTPUT_AXIS: Axis = axisAt(INPUT_AXIS, -(Math.PI / 2 + deg(35)), CENTRE_DISTANCE);
-export const PRIMARY_CENTRE_DISTANCE = ((PARAMS.primary.drive + PARAMS.primary.driven) * MODULE) / 2;
 /** Above and ahead of the clutch at the primary centre distance: 50° above horizontal toward the front (+z). */
 export const CRANK_AXIS: Axis = axisAt(INPUT_AXIS, Math.PI / 2 - deg(50), PRIMARY_CENTRE_DISTANCE);
 
@@ -80,6 +82,20 @@ export const clutchX = (frameX: number): number => CLUTCH_X0 - frameX;
 export const INPUT_SHAFT_X = [clutchX(DIM.clutchHub.bossEnd), lastFace + SHAFT_OVERHANG] as const;
 /** Primary drive gear centre, level with the basket's 76-tooth ring. */
 export const PRIMARY_X = clutchX(-DIM.primary.faceWidth / 2);
+
+// ---- Clutch release ----------------------------------------------------------------------------
+
+/** The pushrod's domed end, just beyond the input shaft's sprocket-side end (the bike's left). */
+export const ROD_END_X = INPUT_SHAFT_X[1] + 0.006;
+/**
+ * The pushrod and lifter's origin at rest (see releaseRod): its lifter flange against the gearbox
+ * side of the pressure plate's centre, its rod through the hollow input shaft to ROD_END_X.
+ */
+export const ROD_ORIGIN_X = clutchX(plateStackOffsets(0).pressurePlate + DIM.pressurePlate.cover) + DIM.release.lifterThickness;
+/** The release arm's pivot (its axis along z), armDrop above the rod, so the arm's face rests on the rod's end. */
+export const RELEASE_PIVOT = { x: ROD_END_X + DIM.release.armDepth / 2, y: INPUT_AXIS.y + DIM.release.armDrop, z: INPUT_AXIS.z } as const;
+/** The lifter boss stands through the pressure plate's centre, 1 mm proud of its spring face. */
+export const LIFTER_BOSS = CLUTCH.springFace - DIM.pressurePlate.cover + 0.001;
 
 export const CRANK = {
   journalRadius: 0.018, x0: PRIMARY_X - 0.016, x1: lastFace + 0.01,
@@ -202,18 +218,25 @@ export const DETENT_PIVOT: Axis = axisAt(
 );
 /** Detent arm direction, pivot to roller, with the roller on a lobe. */
 export const DETENT_ARM_REST = directionOf(DETENT_PIVOT, axisAt(DRUM_AXIS, DETENT_CONTACT, rollerOnLobe));
-/** Shift shaft: 40 mm down and forward (+z) of the drum; its pawl points at the drum's end. */
+/** Shift shaft: 40 mm down and forward (+z) of the drum. Its arm reaches across the drum's end. */
 export const SHIFT_SHAFT_AXIS: Axis = axisAt(DRUM_AXIS, deg(150), 0.04);
 export const SHIFT_SHAFT_RADIUS = 0.007;
-export const PAWL_X = STAR_X + 0.0135;
-export const PAWL_ANGLE = directionOf(SHIFT_SHAFT_AXIS, DRUM_AXIS);
+/** The star wheel's outer face, where the drum's shift pins stand. */
+export const STAR_FACE_X = STAR_X + DIM.starWheel.thickness / 2;
+export const PIN_X = [STAR_FACE_X, STAR_FACE_X + DIM.shiftPins.length] as const;
+/**
+ * The pawls' plane: over the outer part of the pins, clear of the fork rods' ends and of the detent arm's plate, which ends
+ * 4 mm out from the star wheel's face (its pivot boss stands further out, far from the pawls).
+ */
+export const PAWL_X = [STAR_FACE_X + 0.005, STAR_FACE_X + 0.005 + DIM.pawl.thickness] as const;
+/** The shift arm's plane: just clear of the pins' ends and of the detent arm's pivot boss. */
+export const ARM_X = [PIN_X[1] + 0.0005, PIN_X[1] + 0.0005 + DIM.shiftArm.thickness] as const;
 /** The pedal on the shift shaft's outer end, outboard of the chain. */
 export const PEDAL_X = 0.115;
-export const SHIFT_SHAFT_X = [PAWL_X - 0.004, PEDAL_X + DIM.pedal.bossLength / 2] as const;
-/** Pedal lever at rest: forward (+z) and 10° below horizontal. */
-export const PEDAL_REST = deg(100);
-export const PEDAL_SWING = deg(12);
-/** The sense of turn about +x that lifts the pedal's toe: travel +1 (up) turns it by PEDAL_LIFT × PEDAL_SWING. */
+export const SHIFT_SHAFT_X = [ARM_X[1], PEDAL_X + DIM.pedal.bossLength / 2] as const;
+/** Pedal lever at rest: trailing rearward (-z) and 10° below horizontal. */
+export const PEDAL_REST = deg(-100);
+/** The sense of turn about +x that lifts the pedal's toe: +1 for a lever trailing rearward. */
 export const PEDAL_LIFT: 1 | -1 = Math.sin(PEDAL_REST) > 0 ? -1 : 1;
 
 // ---- Final drive ------------------------------------------------------------------------------
