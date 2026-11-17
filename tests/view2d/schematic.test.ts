@@ -3,7 +3,7 @@ import { SLIDER_TRAVEL } from '../../src/model/geometry';
 import type { PartId } from '../../src/model/parts';
 import { createSimulation } from '../../src/sim/simulation';
 import type { SimState } from '../../src/sim/types';
-import { DOG_WIDTHS, dogLugAngles, schematicShapes } from '../../src/view2d/schematic';
+import { DOG_WIDTHS, dogLugAngles, schematicShapes } from '../../src/view2d/layout';
 import { PARAMS } from '../../src/sim/params';
 import { clutchCapacityMax } from '../../src/sim/clutch';
 import { dogAligned } from '../../src/sim/dogs';
