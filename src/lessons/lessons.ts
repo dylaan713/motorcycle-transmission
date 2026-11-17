@@ -43,7 +43,7 @@ const secondsWhere = (trace: SimState[], pred: (s: SimState) => boolean): number
 /** From idle in neutral: lever in, then a full stroke down into first. */
 const INTO_FIRST = keyframes({ clutchLever: [[0, 0], [0.1, 1]], pedal: pedalStroke(0.3, -1) });
 
-/** Three clutched upshifts: throttle off, lever in, pedal up, lever out, throttle on. */
+/** Three clutched shifts up: throttle off, lever in, pedal up, lever out, throttle on. */
 function upshifts(times: number[], throttle: number) {
   const clutchLever: Array<[number, number]> = [[0, 0]];
   const pedal: Array<[number, number]> = [];
@@ -105,13 +105,13 @@ const meet: Lesson = {
       id: 'dogs',
       title: 'The dogs',
       view: { explode: true, focus: 'gear5out', highlight: SLIDERS },
-      text: 'Three sliding pieces turn with their shafts but can slide along them. Each has stubby teeth, called dogs, on its sides that can drop into slots in the free gear on either side of it. That locks the free gear to the shaft, and its pair carries the drive.',
+      text: 'Three sliding pieces, each itself a gear (one carries both third and fourth), turn with their shafts and slide along them. Stubby teeth on their sides, called dogs, drop into slots in the free gear beside them, locking it to the shaft so its pair drives.',
     },
     {
       id: 'forks-and-drum',
       title: 'Forks and drum',
       view: { explode: true, focus: 'shiftDrum', highlight: SHIFTER },
-      text: 'Each sliding piece is moved by a fork that rides in a groove around the shift drum. Each pedal stroke turns the drum one step: the grooves slide one set of dogs out and the next set in. A sprung roller drops into a notch to hold the drum at each step.',
+      text: 'A fork riding in a groove around the shift drum moves each sliding piece. A pedal stroke turns the drum one step; between gears it slides one set of dogs out and the next in. A sprung roller (the detent) drops into a notch to hold the drum at each step.',
     },
     {
       id: 'final-drive',
@@ -263,7 +263,7 @@ const pullingAway: Lesson = {
       id: 'locked',
       title: 'The clutch locks',
       view: { schematic: true, focus: 'clutchBasket', highlight: CLUTCH },
-      text: 'As the bike gains speed, the input shaft catches up with the engine and the slip ends. The plates now turn as one piece, which is called locked, and the engine drives the wheel through first gear.',
+      text: 'As the bike gains speed, the input shaft catches up with the clutch basket, the outer case the engine turns, and the slip ends. The plates now turn as one piece, which is called locked, and the engine drives the wheel through first gear.',
       tryIt: 'Roll the throttle on and off and watch the road speed follow.',
     },
   ],
@@ -284,12 +284,12 @@ const upThroughGears: Lesson = {
     },
     {
       id: 'shifts',
-      title: 'Three clutched upshifts',
+      title: 'Three shifts up',
       start: { gear: 2, rpm: 6000 },
       script: upshifts([0.5, 1.7, 2.9], 0.6),
       seconds: 4,
       view: { xray: true, schematic: true, highlight: SLIDERS },
-      text: 'An upshift is a change to the next gear up: lever in, pedal up, lever out. Each time, a different set of dogs, stubby teeth on a sliding gear, locks a different pair to its shaft. Watch the drive path jump from pair to pair.',
+      text: 'An upshift is a change to the next gear up: lever in, pedal up, lever out. Each time, dogs, stubby teeth on a sliding gear, lock a different pair. Watch the torque path, the route the engine’s turning force takes, drawn in orange, jump from pair to pair.',
       // ends in fifth, and the torque path ran through second, third, fourth and fifth in turn
       outcome: (f, trace) => {
         const seen: GearId[] = [];
