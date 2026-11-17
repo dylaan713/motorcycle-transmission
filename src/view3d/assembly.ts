@@ -3,7 +3,7 @@ import type { BufferGeometry, Mesh, Object3D } from 'three';
 import { FACE_WIDTH, GEAR_ORDER, GEAR_PITCH, MODULE, PRIMARY_MODULE, gearAxialPosition, gearKind, sliderOfGear } from '../model/geometry';
 import { PARTS } from '../model/parts';
 import type { GearNo, PartId } from '../model/parts';
-import type { TorquePath } from '../model/torquePath';
+import { EMPTY_PATH } from '../model/torquePath';
 import { PARAMS } from '../sim/params';
 import { createSimulation } from '../sim/simulation';
 import type { DogSide, SliderId } from '../sim/types';
@@ -17,7 +17,7 @@ import {
   springLength, steelPlate,
 } from '../geo/clutch';
 import { detentArm, pedalLever, shiftArm, shiftDrum, shiftFork, shiftPawl, shiftPins, starWheel } from '../geo/shift';
-import { chainLink, chainLinkCount, chainPath, rearWheel } from '../geo/finalDrive';
+import { chainLink, chainLinkCount, chainPath, rearWheel, tyreShoulders } from '../geo/finalDrive';
 import { edgeMaterial, edgesOf, partMaterial, setGhost, withEdges } from './materials';
 import type { Tone } from './materials';
 import {
@@ -348,7 +348,11 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
     chainMeshes = { inner, outer };
     const wheel = partNode('rearWheel', WHEEL_X, REAR_AXIS);
     const [tyre, rim, hub] = rearWheel();
-    for (const [g, tone] of [[tyre, TONE.tyre], [rim, TONE.rim], [hub, TONE.rim]] as const) setGhost(solid(wheel, g, tone), true); // context
+    for (const [g, tone] of [[tyre, TONE.tyre], [rim, TONE.rim], [hub, TONE.rim]] as const) {
+      const holder = solid(wheel, g, tone);
+      if (g === tyre) holder.add(new LineSegments(tyreShoulders(), edgeMaterial())); // its outline from afar
+      setGhost(holder, true); // context
+    }
   };
 
   const steps = [shafts, gears('input'), gears('output'), clutch, shift, finalDrive];
@@ -377,8 +381,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
     subject: { centre: new Vector3(), radius: 0 },
     rig,
   };
-  const empty: TorquePath = { parts: [], torque: 0, slipping: false, reach: 'none' };
-  poseAssembly(assembly, createSimulation().getState(), empty);
+  poseAssembly(assembly, createSimulation().getState(), EMPTY_PATH);
   for (const m of [assembly.chain.inner, assembly.chain.outer]) m.computeBoundingSphere();
   assembly.framing = framing(root, [...nodes].filter(([id]) => id !== 'chain' && id !== 'rearSprocket' && id !== 'rearWheel').map(([, n]) => n), statics);
   assembly.subject = framing(root, [...rig.gears.map((g) => g.node), ...rig.forks.map((f) => f.node), nodes.get('shiftDrum')!]);

@@ -67,8 +67,10 @@ test('the path: lit faces with a floor, full-signal edges; parts off the path ke
   const p = torquePath(s);
   expect(Math.abs(p.torque)).toBeLessThan(40);
   poseAssembly(a, s, p);
+  // the floor is 0.55 in tier 1; tier 2 (chain, sprockets: C4) lights at 0.6 of it, still the signal's hue
   for (const id of ['gear3in', 'gear3out', 'inputShaft', 'chain', 'rearSprocket'] as PartId[]) {
-    expect(a.node(id).userData.faceTorque, id).toBeGreaterThanOrEqual(0.55);
+    const tier2 = id === 'chain' || id === 'rearSprocket';
+    expect(a.node(id).userData.faceTorque, id).toBeGreaterThanOrEqual(tier2 ? 0.6 * 0.55 - 1e-12 : 0.55);
     for (const l of linesOf(a.node(id))) expect(hex(l.color), id).toBe(SIGNAL);
   }
   for (const id of ['gear2in', 'shiftDrum', 'forkA'] as PartId[]) {
@@ -134,4 +136,36 @@ test('the chain reads as links: inner and outer links in two tones, each link wi
   poseAssembly(a, s, torquePath(s));
   const ci = (a.chain.inner.material as THREE.MeshLambertMaterial).color, co = (a.chain.outer.material as THREE.MeshLambertMaterial).color;
   expect(ci.getHexString()).not.toBe(co.getHexString());
+});
+
+test('in the 3D view the gear pair, its slider and the shafts light in tier 1; primary, clutch, sprockets and chain in tier 2', () => {
+  const s = run(inGear(3, 6000), inp({ throttle: 0.6 }), 0.2);
+  const p = torquePath(s);
+  poseAssembly(a, s, p);
+  const amount = a.node('gear3in').userData.torque as number;
+  expect(amount).toBeGreaterThan(0);
+  for (const id of ['gear3in', 'gear3out', 'inputShaft', 'outputShaft'] as PartId[]) {
+    expect(a.node(id).userData.faceTorque, id).toBeCloseTo(amount, 12); expect(a.node(id).userData.glow, id).toBeCloseTo(amount, 12);
+  }
+  for (const id of ['primaryDrive', 'clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'sprocket', 'chain', 'rearSprocket'] as PartId[]) {
+    expect(a.node(id).userData.faceTorque, id).toBeCloseTo(0.6 * amount, 12); expect(a.node(id).userData.glow, id).toBe(0);
+    for (const l of linesOf(a.node(id))) expect(hex(l.color), id).toBe(SIGNAL);
+  }
+});
+
+test('the ghost wheel reads from afar: half-opacity edges, kept out of the distance fade, and two tyre shoulder rings', () => {
+  expect(GHOST_EDGE_OPACITY).toBe(0.5);
+  const lines = linesOf(a.node('rearWheel'));
+  for (const l of lines) { expect(l.opacity).toBe(0.5); expect(l.userData.ghost).toBe(true); }
+  let rings = 0;
+  a.node('rearWheel').traverse((o) => {
+    const l = o as THREE.LineSegments;
+    if (!l.isLineSegments || (l.geometry as THREE.BufferGeometry).type === 'EdgesGeometry') return;
+    rings++;
+    const p = l.geometry.getAttribute('position');
+    const xs = new Set<number>();
+    for (let i = 0; i < p.count; i++) xs.add(Math.round(p.getX(i) * 1e6));
+    expect(xs.size).toBe(2); // one ring each side
+  });
+  expect(rings).toBe(1);
 });

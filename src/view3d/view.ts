@@ -1,16 +1,17 @@
 import {
-  Color, DirectionalLight, HemisphereLight, LineBasicMaterial, MathUtils, MeshLambertMaterial, NoToneMapping,
+  Color, DirectionalLight, HemisphereLight, MathUtils, NoToneMapping,
   PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer,
 } from 'three';
-import type { BufferGeometry, Intersection, Material, Mesh, Object3D } from 'three';
+import type { BufferGeometry, InstancedMesh, Intersection, LineBasicMaterial, Material, Mesh, MeshLambertMaterial, Object3D } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { View } from '../app/view';
+import { DRAG_PX, type View } from '../app/view';
 import type { PartId } from '../model/parts';
-import type { TorquePath } from '../model/torquePath';
-import { COLORS } from '../ui/tokens';
+import { EMPTY_PATH } from '../model/torquePath';
+import { COLORS } from '../tokens';
 import type { Assembly } from './assembly';
-import { torqueColor, type Tone } from './materials';
-import { FOV, HOME, NARROW, cameraPose, type CameraPose } from './camera';
+import { isLambert, isLine, materialsOf, partLook, type Tone } from './materials';
+import { FOV, cameraPose, poseFor, type CameraPose } from './camera';
+import { initialCameraState, onReset, onResize, onTouch, preferSolid, type Placement } from './cameraState';
 import { poseAssembly } from './pose';
 
 export type CameraPhase = 'start' | 'drag' | 'end';
@@ -46,8 +47,6 @@ export interface View3d extends View {
   readonly contextLost: boolean;
   /** Called with true when the WebGL context is lost and false when it is restored. */
   onContextChange(fn: (lost: boolean) => void): () => void;
-  /** @deprecated the earlier name of onContextChange, kept until main.ts moves over. */
-  onContext(fn: (lost: boolean) => void): () => void;
 }
 
 const MAX_DPR = 2;
@@ -61,25 +60,23 @@ const KEY_OFFSET = new Vector3(-0.55, 0.8, 0.6);
 const LIGHT = { sky: 1.7, key: 2.3 }; // lit faces land near their tokens (sampled: see the task 5 report)
 /** Edge lines fade as the camera backs off, so a far model does not shimmer: opacity 1 → EDGE_FAR. */
 const EDGE_FADE = { from: 4.5, to: 6, far: 0.45 }; // × framing radius
-/** A highlighted part's fill moves this far toward ink. */
-const LIFT = 0.22;
 /** An anchor sits on a part's surface: hits this close in front of it are that surface, m. */
 const OCCLUSION_SLACK = 0.003;
-/** A press that moves the pointer further than this is a camera drag, not a click, CSS px. */
-const DRAG_PX = 5;
-const EMPTY: TorquePath = { parts: [], torque: 0, slipping: false, reach: 'none' };
-
-const isLambert = (m: Material): m is MeshLambertMaterial => (m as MeshLambertMaterial).isMeshLambertMaterial === true;
-const isLineMat = (m: Material): m is LineBasicMaterial => (m as LineBasicMaterial).isLineBasicMaterial === true;
-const materialsOf = (o: Object3D): Material[] => {
-  const m = (o as Mesh).material;
-  return m === undefined ? [] : Array.isArray(m) ? m : [m];
-};
 
 interface PartLook { fills: MeshLambertMaterial[]; edges: LineBasicMaterial[]; node: Object3D }
 
 export function create3dView(container: HTMLElement, assembly: Assembly): View3d {
   const renderer = new WebGLRenderer({ antialias: true });
+  try {
+    return setUp(container, assembly, renderer);
+  } catch (err) {
+    // a throw after the renderer exists must not leak its WebGL context
+    renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
+    throw err;
+  }
+}
+
+function setUp(container: HTMLElement, assembly: Assembly, renderer: WebGLRenderer): View3d {
   renderer.setClearColor(COLORS.ground, 1);
   renderer.toneMapping = NoToneMapping;
   renderer.shadowMap.enabled = false;
@@ -120,6 +117,8 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   const edgeMaterials: LineBasicMaterial[] = [];
   const pickable: Object3D[] = [];
   const solids: Object3D[] = []; // pickable meshes that are not ghosts: they alone hide an anchor
+  const solidSet = new Set<Object3D>();
+  const instanced: InstancedMesh[] = [];
   assembly.root.traverse((o) => {
     const g = (o as Mesh).geometry as BufferGeometry | undefined;
     if (g) geometries.add(g);
@@ -130,30 +129,35 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
         // meshes sit a hair behind their own edge lines, so the lines never z-fight the faces
         m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1;
       }
-      if (isLineMat(m) && !edgeMaterials.includes(m)) edgeMaterials.push(m);
+      if (isLine(m) && !edgeMaterials.includes(m)) edgeMaterials.push(m);
     }
     if (id === undefined) return;
     if ((o as Mesh).isMesh) {
       pickable.push(o);
-      if (materialsOf(o).every((m) => m.depthWrite)) solids.push(o);
+      if (materialsOf(o).every((m) => m.depthWrite)) { solids.push(o); solidSet.add(o); }
+      if ((o as InstancedMesh).isInstancedMesh) instanced.push(o as InstancedMesh);
     }
     let look = looks.get(id);
     if (!look) { look = { fills: [], edges: [], node: assembly.node(id) }; looks.set(id, look); }
     for (const m of materialsOf(o)) {
       if (isLambert(m) && !look.fills.includes(m)) look.fills.push(m);
-      else if (isLineMat(m) && !look.edges.includes(m)) look.edges.push(m);
+      else if (isLine(m) && !look.edges.includes(m)) look.edges.push(m);
     }
   });
 
   const SIGNAL = new Color(COLORS.signal), INK = new Color(COLORS.ink), THIRD = new Color(COLORS.third);
-  /** A part as setTorque leaves it (the same torqueColor), its fills optionally lifted toward ink and its edges inked. */
+  /**
+   * A part as setTorque leaves it, or highlighted: partLook keeps a part on the torque path at the
+   * shared torque colour and glows it more, and lifts a steel part toward ink; edges go ink.
+   */
   const paint = (look: PartLook, lit: boolean): void => {
     const face = (look.node.userData.faceTorque as number | undefined) ?? 0;
+    const glow = (look.node.userData.glow as number | undefined) ?? 0;
     const onPath = ((look.node.userData.torque as number | undefined) ?? 0) > 0;
     for (const m of look.fills) {
       const tone = m.userData.tone as Tone | undefined;
       if (tone === undefined) continue;
-      torqueColor(m.color, tone, face).lerp(INK, lit ? LIFT : 0);
+      partLook(m.color, m.emissive, tone, face, glow, lit);
     }
     for (const m of look.edges) m.color.copy(lit ? INK : onPath ? SIGNAL : THIRD);
   };
@@ -170,30 +174,30 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   // ---- camera ----
   let width = 0, height = 0;
   const size = { w: 0, h: 0 };
-  let touched = false; // the visitor has moved the camera since the last reset
+  const cam = initialCameraState<Vector3>(); // touched, inset and the parked camera (cameraState.ts)
   let placing = false; // the view itself is moving the camera: not the visitor
   let version = 0;
+  let placedPose: CameraPose | null = null;
   const tmp = new Vector3();
-  // narrow stages and the inset take a more head-on framing that fills the width
-  const narrowScreen = typeof matchMedia === 'undefined' ? null : matchMedia('(max-width: 899.98px)');
-  let inInset = false;
-  const homePose = (): CameraPose => (inInset || narrowScreen?.matches ? NARROW : HOME);
-  /** Puts the camera at `position` (or `pose`) at once, dropping any damping momentum left from a drag. */
-  const placeCamera = (pose: CameraPose, position?: Vector3): void => {
+  const target = new Vector3();
+  /** Puts the camera at its placement at once, dropping any damping momentum left from a drag. */
+  const place = (p: Placement<Vector3>): void => {
     placing = true;
     controls.enableDamping = false;
     controls.update(); // without damping, update spends and clears the pending rotation and zoom
-    camera.position.copy(position ?? cameraPose(assembly.subject, pose, width > 0 && height > 0 ? width / height : 1.5).position);
-    camera.lookAt(centre);
-    controls.target.copy(centre);
+    const pose = cameraPose(assembly.subject, p.pose, width > 0 && height > 0 ? width / height : 1.5);
+    target.copy(pose.target);
+    camera.position.copy(p.at ?? pose.position);
+    camera.lookAt(target);
+    controls.target.copy(target);
     controls.update();
     controls.enableDamping = true;
     placing = false;
+    placedPose = p.pose;
     version++;
   };
-  const resetCamera = (): void => { placeCamera(homePose()); touched = false; };
-  /** The visitor's camera while the view sits in the inset, given back when it returns to the stage. */
-  let parked: Vector3 | null = null;
+  const resetCamera = (): void => place(onReset(cam, width));
+  const touch = (): void => onTouch(cam);
 
   // pointer drags hide the labels; wheel zoom and a click (even during a glide) do not
   const cameraListeners = new Set<(p: CameraPhase) => void>();
@@ -207,7 +211,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   };
   const onPointerMove = (e: PointerEvent): void => {
     if (!press || dragging || e.pointerId !== press.id) return;
-    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > DRAG_PX) { dragging = true; touched = true; emit('drag'); }
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > DRAG_PX) { dragging = true; touch(); emit('drag'); }
   };
   const onPointerEnd = (e: PointerEvent): void => {
     if (!press || e.pointerId !== press.id) return;
@@ -221,7 +225,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   canvas.addEventListener('pointercancel', onPointerEnd);
   const onChange = (): void => {
     version++;
-    if (!placing && press === null) touched = true; // a wheel or trackpad zoom
+    if (!placing && press === null) touch(); // a wheel or trackpad zoom
   };
   controls.addEventListener('change', onChange);
 
@@ -260,6 +264,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
     if (Math.abs(opacity - edgeOpacity) <= 1e-3) return;
     edgeOpacity = opacity;
     for (const m of edgeMaterials) {
+      if (m.userData.ghost === true) continue; // ghost edges keep their opacity: the wheel must read from afar
       m.opacity = ((m.userData.baseOpacity as number | undefined) ?? 1) * opacity;
       const see = m.opacity < 1;
       if (m.transparent !== see) { m.transparent = see; m.needsUpdate = true; }
@@ -271,7 +276,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
   return {
     render(state, path) {
       if (lost || width <= 0 || height <= 0 || (typeof document !== 'undefined' && document.hidden)) return;
-      poseAssembly(assembly, state, torqueFlow ? path : EMPTY);
+      poseAssembly(assembly, state, torqueFlow ? path : EMPTY_PATH);
       const look = highlighted === null ? undefined : looks.get(highlighted);
       if (look) paint(look, true); // setTorque may have repainted it
       controls.update();
@@ -290,14 +295,8 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       const inset = container.closest('.stage-inset') !== null;
-      if (inset !== inInset) {
-        inInset = inset;
-        if (inset) { parked = touched ? camera.position.clone() : null; placeCamera(NARROW); }
-        else if (parked) { placeCamera(HOME, parked); parked = null; }
-        else resetCamera();
-      } else if (!touched || inset) {
-        placeCamera(inset ? NARROW : homePose()); // keep the composition until the visitor moves the camera
-      }
+      const placement = onResize(cam, w, inset, () => ({ pose: placedPose ?? poseFor(w, false), at: camera.position.clone() }));
+      if (placement) place(placement);
       version++;
     },
     pick(x, y) {
@@ -307,7 +306,7 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       hits.length = 0;
       raycaster.intersectObjects(pickable, false, hits);
       // a solid part seen through a ghost wins over the ghost
-      const hit = hits.find((h) => solids.includes(h.object)) ?? hits[0];
+      const hit = preferSolid(hits, (h) => solidSet.has(h.object));
       return hit ? (hit.object.userData.partId as PartId) : null;
     },
     setHighlight,
@@ -323,18 +322,20 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
       cameraListeners.clear(); contextListeners.clear();
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();
+      for (const m of instanced) m.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       canvas.remove();
     },
     resetCamera,
     orbit(dAzimuth, dPolar) {
-      touched = true;
+      touch();
       controls.rotateLeft(dAzimuth);
       controls.rotateUp(dPolar);
     },
     zoom(factor) {
       if (!(factor > 0)) return;
-      touched = true;
+      touch();
       controls.dollyIn(factor); // three's dolly multiplies the distance by its scale
     },
     project(world, out) {
@@ -360,6 +361,5 @@ export function create3dView(container: HTMLElement, assembly: Assembly): View3d
     onCamera(fn) { cameraListeners.add(fn); return () => { cameraListeners.delete(fn); }; },
     get contextLost() { return lost; },
     onContextChange,
-    onContext: onContextChange,
   };
 }

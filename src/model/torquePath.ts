@@ -5,6 +5,9 @@ import type { PartId } from './parts';
 
 export interface TorquePath { parts: PartId[]; torque: number; slipping: boolean; reach: 'none' | 'clutch' | 'inputShaft' | 'wheel' }
 
+/** No part carrying torque. */
+export const EMPTY_PATH: TorquePath = Object.freeze({ parts: [], torque: 0, slipping: false, reach: 'none' }) as TorquePath;
+
 const MIN_TORQUE = 0.5; // N·m; below this nothing is shown as carrying torque
 const MIN_SLIP = 0.5; // rad/s
 const TO_INPUT: readonly PartId[] = [

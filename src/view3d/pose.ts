@@ -12,7 +12,7 @@ import { DIM } from '../geo/dimensions';
 import { plateStackOffsets, springLength } from '../geo/clutch';
 import { DETENT_ARM, STAR_SEAT_DEPTH, STAR_SEAT_EDGES, starWheelRadiusAt } from '../geo/shift';
 import { DRUM_MAX, DRUM_MIN } from '../sim/shiftDrum';
-import { setTorque } from './materials';
+import { setTorque, type TorqueTier } from './materials';
 import {
   DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, DRUM_TURN, FORK_X, RELEASE_PIVOT, ROD_END_X, ROD_ORIGIN_X, TURN,
   clutchX, directionOf, distanceOf,
@@ -21,6 +21,10 @@ import type { Assembly } from './assembly';
 import { ratchetPose } from './ratchet';
 
 const PART_IDS = Object.keys(PARTS) as PartId[];
+/** Parts that carry the drive to and from the gearbox: their faces light a tier lower (see setTorque). */
+const TIER: Partial<Record<PartId, TorqueTier>> = Object.fromEntries(
+  (['primaryDrive', 'clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'sprocket', 'chain', 'rearSprocket'] as const).map((id) => [id, 2]),
+);
 /** Torque that lights a part fully, N·m; anything carrying torque shows at least TORQUE_FLOOR. */
 const TORQUE_FULL = 150;
 const TORQUE_FLOOR = 0.55;
@@ -202,5 +206,5 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
   a.chain.outer.instanceMatrix.needsUpdate = true;
 
   const amount = clamp(Math.abs(path.torque) / TORQUE_FULL, TORQUE_FLOOR, 1);
-  for (const id of PART_IDS) setTorque(a.node(id), path.parts.includes(id) ? amount : 0);
+  for (const id of PART_IDS) setTorque(a.node(id), path.parts.includes(id) ? amount : 0, TIER[id] ?? 1);
 }

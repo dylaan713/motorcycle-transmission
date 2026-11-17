@@ -1,5 +1,4 @@
-import type { BufferGeometry } from 'three';
-import { Vector2 } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Vector2 } from 'three';
 import { DIM } from './dimensions';
 import { arc } from './outline';
 import { lathe, prism, rotateX, toGeometry } from './mesh';
@@ -129,4 +128,22 @@ export function rearWheel(): BufferGeometry[] {
   const hub = toGeometry([lathe([[-hx, axle], [-hx, W.hubRadius - 0.008], [-hx + 0.008, W.hubRadius],
     [hx - 0.008, W.hubRadius], [hx, W.hubRadius - 0.008], [hx, axle]], 48)]);
   return [tyre, rimAndSpokes, hub];
+}
+
+/**
+ * Two circles where the tyre is widest, one each side (x = ±width/2 at the section's mid height),
+ * as line segments: drawn as edges, they keep the ghosted wheel's outline readable from afar,
+ * where a smooth tyre has no creases to draw.
+ */
+export function tyreShoulders(): BufferGeometry {
+  const rc = W.radius - W.tyreSection / 2, pts: number[] = [];
+  for (const x of [-W.width / 2, W.width / 2]) {
+    for (let i = 0; i < WHEEL_SEGMENTS; i++) {
+      const a0 = (TWO_PI * i) / WHEEL_SEGMENTS, a1 = (TWO_PI * (i + 1)) / WHEEL_SEGMENTS;
+      pts.push(x, rc * Math.cos(a0), rc * Math.sin(a0), x, rc * Math.cos(a1), rc * Math.sin(a1));
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pts, 3));
+  return g;
 }

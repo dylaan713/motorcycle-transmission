@@ -9,7 +9,7 @@ import { describeTarget, shouldHandleCameraKey, shouldHandleKey, trackFocusOrigi
 import { createLoop, startAnimation } from './app/loop';
 import { holdForReducedMotion } from './app/motion';
 import { createStageHost, type ViewName } from './app/stageHost';
-import type { View } from './app/view';
+import { DRAG_PX, type View } from './app/view';
 import { mountDeck } from './ui/deck';
 import { createSimulation } from './sim/simulation';
 import { torquePath } from './model/torquePath';
@@ -145,7 +145,6 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
 const hold = holdForReducedMotion(loop, driver, reducedMotion);
 
 // hover highlights a part, a click (not a drag) selects it
-const DRAG_PX = 5;
 let hovering = false;
 let press: { x: number; y: number } | null = null;
 const local = (e: PointerEvent) => {

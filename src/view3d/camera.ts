@@ -8,14 +8,25 @@ import { MathUtils, Spherical, Vector3 } from 'three';
  * left, the schematic's order.
  */
 
-export interface CameraPose { azimuth: number; polar: number; /** framing sphere's share of the view */ fill: number }
+export interface CameraPose {
+  azimuth: number; polar: number;
+  /** framing sphere's share of the view */ fill: number;
+  /** where the camera looks, from the subject's centre, m */ offset: { x: number; y: number; z: number };
+}
 
 export const FOV = 32; // degrees, vertical
 
-/** Wide stages: from the sprocket end (+x), in front (+z) and above, so the gear train is the subject. */
-export const HOME: CameraPose = { azimuth: MathUtils.degToRad(22), polar: MathUtils.degToRad(58), fill: 1.1 };
-/** Narrow stages and the inset: more head-on, filling the width. */
-export const NARROW: CameraPose = { azimuth: MathUtils.degToRad(14), polar: MathUtils.degToRad(60), fill: 0.75 };
+/**
+ * Wide views: from the sprocket end (+x), in front (+z) and above, so the gear train is the
+ * subject, looking a centimetre below its centre. Provisional numbers from the stage 3 review.
+ */
+export const HOME: CameraPose = { azimuth: MathUtils.degToRad(16), polar: MathUtils.degToRad(58), fill: 1.3, offset: { x: 0, y: -0.01, z: 0 } };
+/** Narrow views and the inset: more head-on, looking a little toward the clutch. Provisional. */
+export const NARROW: CameraPose = { azimuth: MathUtils.degToRad(10), polar: MathUtils.degToRad(60), fill: 1.25, offset: { x: -0.03, y: -0.01, z: 0 } };
+/** A 3D view narrower than this, CSS px, takes the NARROW pose. */
+export const NARROW_BELOW = 700;
+/** The pose for a 3D view `width` CSS px wide, or the inset's. Chosen by the view's own width, not the window's. */
+export const poseFor = (width: number, inInset: boolean): CameraPose => (inInset || width < NARROW_BELOW ? NARROW : HOME);
 
 /** Distance at which the framing sphere fills `fill` of the narrower field of view. */
 export function fitDistance(radius: number, aspect: number, fill: number, fov = FOV): number {
@@ -24,9 +35,10 @@ export function fitDistance(radius: number, aspect: number, fill: number, fov = 
   return radius / (fill * Math.sin(Math.min(vHalf, hHalf)));
 }
 
-/** The camera for `pose`, looking at the centre of `subject` and framing it by `pose.fill`. */
+/** The camera for `pose`, looking at the subject's centre plus `pose.offset` and framing the subject by `pose.fill`. */
 export function cameraPose(subject: { centre: Vector3; radius: number }, pose: CameraPose, aspect: number): { position: Vector3; target: Vector3 } {
   const d = fitDistance(subject.radius, aspect, pose.fill);
-  const position = new Vector3().setFromSpherical(new Spherical(d, pose.polar, pose.azimuth)).add(subject.centre);
-  return { position, target: subject.centre.clone() };
+  const target = subject.centre.clone().add(new Vector3(pose.offset.x, pose.offset.y, pose.offset.z));
+  const position = new Vector3().setFromSpherical(new Spherical(d, pose.polar, pose.azimuth)).add(target);
+  return { position, target };
 }
