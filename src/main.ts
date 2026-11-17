@@ -1,6 +1,5 @@
-import '@fontsource-variable/archivo/wdth.css';
 import '@fontsource-variable/jetbrains-mono/index.css';
-import './ui/styles.css';
+import './ui/styles.css'; // also declares the Archivo faces the page uses
 import { applyTokens } from './ui/tokens';
 import { CAMERA_KEYS, createControls, KEYMAP } from './app/controls';
 import { createContextGuard } from './app/contextGuard';
@@ -37,9 +36,26 @@ const driver = createDriver(controls.source, { autoStart: false });
 const ARRIVAL_MS = 900;
 const TEXT_MS = 1000 / 15; // text readouts change at most 15 times a second
 
-const status = mountStatus(document.getElementById('status')!);
-const panel = mountPanel(document.getElementById('panel')!);
+const statusEl = document.getElementById('status')!;
+const status = mountStatus(statusEl);
+const panelEl = document.getElementById('panel')!;
+const panel = mountPanel(panelEl);
 const chip = mountModeChip(document.getElementById('mode')!, driver);
+
+// temporary until the drawer (Task 4): the panel opens over the right of the stage from a pill in the top bar
+const panelToggle = el('button', 'panel-toggle', {
+  type: 'button', 'aria-controls': 'panel', 'aria-expanded': 'false', 'data-press': '',
+}, el('span', 'panel-toggle-icon', { 'aria-hidden': 'true' }), el('span', 'panel-toggle-text', {}, 'How it works'));
+document.querySelector('.topbar')!.append(panelToggle);
+let panelOpen = false;
+panelEl.hidden = true;
+const setPanelOpen = (open: boolean): void => {
+  panelOpen = open;
+  panelEl.hidden = !open;
+  panelToggle.setAttribute('aria-expanded', String(open));
+  if (open) panel.focusTab();
+};
+panelToggle.addEventListener('click', () => setPanelOpen(!panelOpen));
 /** Reset leaves the bike at a standstill in neutral with the engine running, and the controls to match. */
 const reset = (): void => { sim.reset(); controls.reset(); };
 const deck = mountDeck(document.getElementById('deck')!, controls, {
@@ -54,12 +70,13 @@ const insetSlot = el('button', 'stage-inset', { id: 'stage-inset', type: 'button
 stage.prepend(mainSlot, insetSlot);
 const host = createStageHost(mainSlot, insetSlot);
 
-// the overlay over the views and under the loader: the instrument cluster and the part card under it
-const overlay = el('div', 'stage-overlay');
+// the overlay layers; their stacking order is set once, in the :root block of styles.css
+const tachLayer = el('div', 'layer-tach', { id: 'tach', 'aria-hidden': 'true' }); // the tachometer arc (Task 2)
+const readingsLayer = el('div', 'layer-readings', { id: 'readings' }); // gear, speed and rpm (Task 2)
 const clusterEl = el('div', 'cluster', { role: 'group', 'aria-label': 'Instruments' });
-const cardEl = el('section', 'part-card');
-overlay.append(clusterEl, cardEl);
-insetSlot.after(overlay);
+readingsLayer.append(clusterEl);
+const cardEl = el('section', 'part-card', { id: 'part-card' });
+insetSlot.after(tachLayer, readingsLayer, cardEl);
 const cluster = mountCluster(clusterEl);
 
 const wide = matchMedia('(min-width: 900px)');
@@ -98,7 +115,7 @@ wide.addEventListener('change', () => {
 insetSlot.addEventListener('click', () => { if (host.inset !== null) showMain(host.inset); });
 
 mountPartCard(cardEl, {
-  onClose: () => panel.focusTab(),
+  onClose: () => { if (panelOpen) panel.focusTab(); else panelToggle.focus(); },
   onChange: () => callouts?.invalidate(),
 });
 
@@ -209,9 +226,9 @@ function arrive3d(v3: View3d): void {
   view3d = v3;
   const tools = el('div', 'stage-tools');
   const layer = el('div', 'callout-layer');
-  stage.insertBefore(layer, insetSlot); // under the inset, over the main view
+  stage.insertBefore(layer, insetSlot); // its place in the stacking order comes from styles.css
   stage.append(tools);
-  stage.toggleAttribute('data-tools', true); // the main view makes room for it
+  stage.toggleAttribute('data-tools', true); // on phones the main view makes room for it
   const bar = mountToolbar(tools, {
     onView: (v) => showMain(v),
     onInset: (on) => { insetChoice.choose(on); applyInset(); syncChrome(); },
@@ -225,7 +242,7 @@ function arrive3d(v3: View3d): void {
   touchHint ??= mountTouchHint(stage);
   const cards = mountCallouts(layer, v3);
   callouts = cards;
-  // cards keep clear of the status line and loader along the top, the cluster and part card, the toolbar and the inset
+  // cards keep clear of the loader along the top, the status line, the readings and part card, the toolbar and the inset
   const TOP_BAND = 48;
   cards.setAvoid(() => {
     const origin = layer.getBoundingClientRect();
@@ -233,6 +250,7 @@ function arrive3d(v3: View3d): void {
     const out: Rect[] = [{ x: 0, y: 0, w: origin.width, h: TOP_BAND }, rel(tools.getBoundingClientRect()), rel(clusterEl.getBoundingClientRect())];
     if (!cardEl.hidden) out.push(rel(cardEl.getBoundingClientRect()));
     if (!insetSlot.hidden) out.push(rel(insetSlot.getBoundingClientRect()));
+    if (statusEl.textContent !== '') out.push(rel(statusEl.getBoundingClientRect()));
     return out;
   });
   const onContext = (lost: boolean): void => {
@@ -284,6 +302,7 @@ const cameraKey = (e: KeyboardEvent): void => {
 
 trackFocusOrigin(window);
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && panelOpen) { setPanelOpen(false); panelToggle.focus(); return; }
   const target = describeTarget(e.target);
   if (shouldHandleCameraKey(e, target)) { cameraKey(e); return; } // the camera never takes over the ride
   if (!shouldHandleKey(e, target)) return;

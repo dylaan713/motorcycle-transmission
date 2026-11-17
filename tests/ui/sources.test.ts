@@ -23,8 +23,19 @@ test('no hex colour literal outside the tokens module', () => {
   expect(offenders).toEqual([]);
 });
 
-test('the signal colour is named only where torque is drawn', () => {
+test('the torque colour is named only where torque is drawn', () => {
+  // the token was called signal before stage 3b; neither name may appear anywhere else
   const ALLOWED = new Set(['tokens.ts', 'ui/tokens.ts', 'view2d/paint.ts', 'view2d/flow.ts', 'view2d/draw/finalDrive.ts']);
-  const offenders = files.filter((f) => !ALLOWED.has(f) && !f.startsWith('view3d/') && /signal/i.test(read(f)));
+  const NAMED = /COLORS\.torque|--torque\b|signal/i;
+  const offenders = files.filter((f) => !ALLOWED.has(f) && !f.startsWith('view3d/') && NAMED.test(read(f)));
   expect(offenders).toEqual([]);
+});
+
+test('the page has one stage, no permanent panel column and no old header readings', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  expect(html).toContain('class="topbar"');
+  expect(html).not.toContain('app-header');
+  expect(html).toMatch(/<section id="stage"[^>]*>/);
+  expect(html).toMatch(/id="lessons"/);
+  expect(read('ui/styles.css')).not.toMatch(/--panel-w|grid-template-areas:\s*'stage panel'/);
 });

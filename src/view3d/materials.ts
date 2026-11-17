@@ -11,8 +11,8 @@ import { COLORS } from '../tokens';
 
 export type Tone = 'steel1' | 'steel2' | 'steel3' | 'steel4' | 'steel5';
 
-const SIGNAL = new Color(COLORS.signal);
-const THIRD = new Color(COLORS.third);
+const SIGNAL = new Color(COLORS.torque);
+const THIRD = new Color(COLORS.ink3);
 /** Emissive strength at full torque, as a fraction of the signal colour. */
 const GLOW = 0.35;
 const DEFAULT_EDGE_DEG = 28;
@@ -25,7 +25,7 @@ export function partMaterial(tone: Tone): MeshLambertMaterial {
 }
 
 export function edgeMaterial(): LineBasicMaterial {
-  return new LineBasicMaterial({ color: COLORS.third });
+  return new LineBasicMaterial({ color: COLORS.ink3 });
 }
 
 // Parts that share a geometry (plates, chain links) share its edge geometry too.

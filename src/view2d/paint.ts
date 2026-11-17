@@ -55,7 +55,7 @@ export class Painter {
     tile.width = size; tile.height = size;
     const t = tile.getContext('2d');
     if (!t) { this.hatch = null; return; }
-    t.strokeStyle = COLORS.signal;
+    t.strokeStyle = COLORS.torque;
     t.lineWidth = Math.max(1, dpr * 1.25);
     t.beginPath();
     t.moveTo(-1, size + 1); t.lineTo(size + 1, -1);
@@ -83,12 +83,12 @@ export class Painter {
     const a = this.snap(this.X(x0)), b = this.snap(this.Y(y0));
     const w = Math.max(1 / this.dpr, this.snap(this.X(x1)) - a), h = Math.max(1 / this.dpr, this.snap(this.Y(y1)) - b);
     ctx.globalAlpha = this.hotAlpha * this.base;
-    ctx.fillStyle = hatched && this.hatch ? this.hatch : COLORS.signal;
+    ctx.fillStyle = hatched && this.hatch ? this.hatch : COLORS.torque;
     ctx.fillRect(a, b, w, h);
     ctx.globalAlpha = this.base;
   }
   /** A part's box: base fill, torque overlay when it carries torque, outline. */
-  part(id: PartId, x0: number, y0: number, x1: number, y1: number, fill: string, outline: string | null = COLORS.third): void {
+  part(id: PartId, x0: number, y0: number, x1: number, y1: number, fill: string, outline: string | null = COLORS.ink3): void {
     this.fade(id);
     this.box(x0, y0, x1, y1, fill, null);
     if (this.hot.has(id)) this.hotBox(x0, y0, x1, y1);
@@ -99,7 +99,7 @@ export class Painter {
     if (!this.hot.has(id)) return;
     const ctx = this.ctx;
     ctx.globalAlpha = this.hotAlpha * this.base;
-    if (stroke) { ctx.strokeStyle = COLORS.signal; ctx.stroke(); } else { ctx.fillStyle = COLORS.signal; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = COLORS.torque; ctx.stroke(); } else { ctx.fillStyle = COLORS.torque; ctx.fill(); }
     ctx.globalAlpha = this.base;
   }
 
@@ -123,7 +123,7 @@ export class Painter {
     ctx.stroke();
     ctx.globalAlpha = this.base;
   }
-  tickColour(id: PartId): string { return this.hot.has(id) ? COLORS.ground : COLORS.third; }
+  tickColour(id: PartId): string { return this.hot.has(id) ? COLORS.ground : COLORS.ink3; }
 
   /** A quadrilateral path from a segment (xa, ya)–(xb, yb) widened by halfW on either side. */
   quad(xa: number, ya: number, xb: number, yb: number, halfW: number): void {
@@ -136,7 +136,7 @@ export class Painter {
   circle(x: number, y: number, r: number): void {
     this.ctx.beginPath(); this.ctx.arc(this.X(x), this.Y(y), Math.max(0.5, this.L(r)), 0, TWO_PI);
   }
-  fillCircle(id: PartId | null, x: number, y: number, r: number, fill: string, outline: string | null = COLORS.third): void {
+  fillCircle(id: PartId | null, x: number, y: number, r: number, fill: string, outline: string | null = COLORS.ink3): void {
     const ctx = this.ctx;
     if (id) this.fade(id);
     this.circle(x, y, r);
@@ -156,7 +156,7 @@ export class Painter {
     ctx.stroke();
   }
 
-  label(x: number, y: number, text: string, align: CanvasTextAlign, colour: string = COLORS.third, dyPx = 0, dxPx = 0): void {
+  label(x: number, y: number, text: string, align: CanvasTextAlign, colour: string = COLORS.ink3, dyPx = 0, dxPx = 0): void {
     const ctx = this.ctx;
     ctx.fillStyle = colour; ctx.textAlign = align;
     ctx.fillText(text, Math.round(this.X(x) + dxPx), Math.round(this.Y(y) + dyPx));

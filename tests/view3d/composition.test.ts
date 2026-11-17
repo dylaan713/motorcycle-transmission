@@ -21,7 +21,7 @@ const linesOf = (node: THREE.Object3D): THREE.LineBasicMaterial[] => {
 };
 const lambert = (m: THREE.Mesh) => m.material as THREE.MeshLambertMaterial;
 const hex = (c: THREE.Color) => '#' + c.getHexString();
-const SIGNAL = COLORS.signal.toLowerCase(), THIRD = COLORS.third.toLowerCase();
+const SIGNAL = COLORS.torque.toLowerCase(), THIRD = COLORS.ink3.toLowerCase();
 
 test('the rear wheel and the crank are context parts; the chain, sprockets and primary gear are not', () => {
   for (const id of ['rearWheel', 'crank'] as const) {

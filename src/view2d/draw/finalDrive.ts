@@ -20,7 +20,7 @@ export function drawFinalDrive(p: Painter, shapes: readonly PartShape[], outAngl
   // leader from the edge-on sprocket to the end view
   const cx = (SPROCKET_X[0] + SPROCKET_X[1]) / 2, w = CHAIN_WRAP;
   p.fade('sprocket');
-  ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.setLineDash(DASH);
+  ctx.strokeStyle = COLORS.ink3; ctx.lineWidth = 1; ctx.setLineDash(DASH);
   ctx.beginPath();
   ctx.moveTo(p.X(cx + w.half + 1 * MM), p.Y(OUT_Y + SPROCKET_R));
   ctx.lineTo(p.X(INSET.front.x - INSET.front.r - 3 * MM), p.Y(INSET.front.y));
@@ -30,11 +30,11 @@ export function drawFinalDrive(p: Painter, shapes: readonly PartShape[], outAngl
   // ground under the wheel
   p.fade('rearWheel');
   const gy = p.line1(p.Y(rear.y + wheel.r));
-  ctx.strokeStyle = COLORS.third; ctx.lineWidth = p.hair;
+  ctx.strokeStyle = COLORS.ink3; ctx.lineWidth = p.hair;
   ctx.beginPath(); ctx.moveTo(p.X(rear.x - wheel.r - 6 * MM), gy); ctx.lineTo(p.X(rear.x + wheel.r + 4 * MM), gy); ctx.stroke();
   // wheel: tyre, rim and five spokes
   p.fillCircle('rearWheel', rear.x, rear.y, wheel.r, COLORS.steel2);
-  p.fillCircle(null, rear.x, rear.y, wheel.rim, COLORS.ground, COLORS.third);
+  p.fillCircle(null, rear.x, rear.y, wheel.rim, COLORS.ground, COLORS.ink3);
   p.radialTicks(rear.x, rear.y, 3 * MM, wheel.rim, wheelAngle, 5, COLORS.steel3, Math.max(1.5, p.L(2 * MM)));
   p.hotPath('rearWheel', true); // the spokes take the torque overlay at the same opacity as every part
   // rear sprocket

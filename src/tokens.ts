@@ -1,15 +1,26 @@
-/** The palette, the one source of colour for the views and the page. */
+/**
+ * The palette, the one source of colour for the views and the page. Roles from the instrument
+ * design: ground is the field, surface the switchgear bodies, edge hairlines and control borders
+ * (never the only cue: 1.5:1), steel the tach track and minor ticks (strokes only), ink, ink2 and
+ * ink3 the three text levels (ink3 on ground and surface only), and torque means exactly one thing:
+ * this part is carrying torque. It is never text.
+ */
 export const COLORS = {
-  ground: '#14161A',
-  surface: '#1E2228',
-  ink: '#E8EAED',
-  third: '#8F99A8',
-  signal: '#FF6A1A',
-  steel1: '#2A3038',
-  steel2: '#3A424D',
-  steel3: '#566170',
-  steel4: '#7C8796',
-  steel5: '#A9B4C2',
+  ground: '#060708',
+  surface: '#121519',
+  edge: '#2A2F36',
+  steel: '#5B636D',
+  ink: '#F2F4F6',
+  ink2: '#A3ACB7',
+  ink3: '#7D8692',
+  torque: '#FF7A1A',
+  // the part tones of the 3D model and the schematic: a cool ladder whose darkest still clears the
+  // ground; never used for text or page chrome
+  steel1: '#29313B',
+  steel2: '#38414D',
+  steel3: '#525E6E',
+  steel4: '#768498',
+  steel5: '#A5B0BF',
 } as const;
 
 function channel(v: number): number {

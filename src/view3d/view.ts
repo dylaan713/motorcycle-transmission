@@ -143,7 +143,7 @@ function setUp(container: HTMLElement, assembly: Assembly, renderer: WebGLRender
     }
   });
 
-  const SIGNAL = new Color(COLORS.signal), INK = new Color(COLORS.ink), THIRD = new Color(COLORS.third);
+  const SIGNAL = new Color(COLORS.torque), INK = new Color(COLORS.ink), THIRD = new Color(COLORS.ink3);
   /**
    * A part as setTorque leaves it, or highlighted: partLook keeps a part on the torque path at the
    * shared torque colour and glows it more, and lifts a steel part toward ink; edges go ink.

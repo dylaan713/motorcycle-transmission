@@ -1,37 +1,88 @@
 /* Colour values mirror COLORS in tokens.ts (a unit test keeps them equal); this
-   block exists only to avoid a flash of unstyled colour before JS runs. */
+   block exists only to avoid a flash of unstyled colour before JS runs. The part
+   tones (--steel-1 to --steel-5) belong to the 3D model and the schematic: the page
+   never uses them, and nothing uses --ink-3 on anything lighter than --surface. */
 :root {
-  --ground: #14161A;
-  --surface: #1E2228;
-  --ink: #E8EAED;
-  --third: #8F99A8;
-  --signal: #FF6A1A;
-  --steel-1: #2A3038;
-  --steel-2: #3A424D;
-  --steel-3: #566170;
-  --steel-4: #7C8796;
-  --steel-5: #A9B4C2;
+  --ground: #060708;
+  --surface: #121519;
+  --edge: #2A2F36;
+  --steel: #5B636D;
+  --ink: #F2F4F6;
+  --ink-2: #A3ACB7;
+  --ink-3: #7D8692;
+  --torque: #FF7A1A;
+  --steel-1: #29313B;
+  --steel-2: #38414D;
+  --steel-3: #525E6E;
+  --steel-4: #768498;
+  --steel-5: #A5B0BF;
 
   /* spacing scale, 4px base */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
   /* type scale */
   --t-xs: 0.75rem; --t-sm: 0.8125rem; --t-md: 0.9375rem; --t-lg: 1.125rem; --t-xl: 1.5rem; --t-2xl: 2rem;
   --font-text: 'Archivo Variable', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace; /* key hints only */
+  /* the width axis is the design device: see the .type-* utilities */
+  --wdth-expanded: 118%;
+  --wdth-condensed: 66%;
 
-  --header-h: 56px;
+  /* THE STACKING ORDER, bottom to top. The only place a z-index value is set; every rule
+     names one of these. Each is a layer element (see main.ts and index.html):
+       view      .stage-main          the main view (3D or schematic), full bleed
+       tach      #tach                the tachometer arc, SVG, no pointer events      (Task 2)
+       callouts  .callout-layer       leader lines and callouts over the 3D view      (Task 3)
+       readings  #readings            gear numeral, speed and rpm at the right edge   (Task 2)
+       inset     .stage-inset         the other view, small, lower left
+       toolbar   .stage-tools         view toolbar, top left; also .touch-hint        (Task 3)
+       card      #part-card           the selected part, lower right
+       status    #status              notices over the stage
+       loader    .loader              3D loading progress
+       drawer    #panel               the "How it works" drawer over the right        (Task 4) */
+  --z-view: 0;
+  --z-tach: 1;
+  --z-callouts: 2;
+  --z-readings: 3;
+  --z-inset: 4;
+  --z-toolbar: 5;
+  --z-card: 6;
+  --z-status: 7;
+  --z-loader: 8;
+  --z-drawer: 9;
+
+  --topbar-h: 72px;
+  --lessons-h: 40px;
   --deck-h: 132px;
-  --panel-w: 360px;
-  --gutter: 24px;
+  --drawer-w: 440px;
+  --gutter: 28px;
   --inset: 28%; /* inset width and height, as a share of the stage */
-  --tools-h: 0px; /* band under the main view kept for the toolbar once it is mounted */
+  --tools-h: 0px; /* band under the main view kept for the toolbar on phones */
   --strip-h: 0px; /* band over the main view kept for the phone instrument strip */
   color-scheme: dark;
 }
 
+/* One family, Archivo Variable, bundled: only the latin subset of the width-axis faces, roman
+   and italic (the page has no text outside it). Weight 100-900, width 62-125%. */
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-italic.woff2') format('woff2-variations');
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
-/* the app fills the dynamic viewport and the page itself never scrolls: only the panel does */
+/* the app fills the dynamic viewport and the page itself never scrolls */
 html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--ground); }
 
 body {
@@ -45,18 +96,28 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ---- type: expanded bold for the title, condensed heavy italic for everything that moves,
+   normal width for body text; tabular figures on every reading ---- */
+.type-expanded { font-stretch: var(--wdth-expanded); font-weight: 700; }
+.type-condensed {
+  font-stretch: var(--wdth-condensed); font-style: italic; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.type-normal { font-stretch: 100%; font-style: normal; }
+.tabular { font-variant-numeric: tabular-nums; }
+
 h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.15; }
-h1 { font-size: var(--t-lg); font-stretch: 112%; }
-h2 { font-size: var(--t-lg); font-stretch: 112%; }
-/* tracking -0.02em belongs to display text of 32px and up only; no heading is that large yet */
+h1 { font-size: var(--t-xl); letter-spacing: -0.01em; }
+h2 { font-size: var(--t-lg); }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 
-.mono, [data-count] {
-  font-family: var(--font-mono);
+/* the readings in their temporary overlay already take the moving type */
+[data-count] {
+  font-stretch: var(--wdth-condensed); font-style: italic; font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
@@ -65,46 +126,53 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 [data-press] { transition: transform 80ms; touch-action: manipulation; }
 [data-press]:active { transform: scale(0.97); }
 
-/* ---- layout, desktop first ---- */
+/* ---- the page: a slim top bar over a full-bleed stage, the lesson row and the deck ---- */
 .app {
-  /* one column no wider than the viewport: the header's title gives way (ellipsis), never the page */
-  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-h) minmax(0, 1fr); height: 100dvh;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr); height: 100dvh;
   position: relative; overflow: clip; /* nothing inside can make the page scroll */
 }
 
-.app-header {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
-  padding: 0 var(--gutter);
-  background: var(--surface);
-  border-bottom: 1px solid var(--steel-1);
+/* no background box: the title, the mode chip and the drawer pill sit on the ground */
+.topbar {
+  display: flex; align-items: center; gap: var(--s4);
+  padding: 0 var(--gutter); min-width: 0;
 }
-.title { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
-.app-header h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.title-note { font-size: var(--t-sm); color: var(--third); white-space: nowrap; }
-#mode { display: flex; align-items: center; justify-content: flex-end; min-height: 32px; flex: none; color: var(--third); }
+.title { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.topbar h1 { white-space: nowrap; line-height: 1.1; }
+.title-note { margin: 2px 0 0; font-size: var(--t-sm); line-height: 1.3; color: var(--ink-3); white-space: nowrap; }
+#mode { display: flex; align-items: center; justify-content: flex-end; min-height: 32px; flex: none; color: var(--ink-2); }
+
+/* temporary until the drawer (Task 4): the pill that opens the panel */
+.panel-toggle {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: var(--s2); min-width: 44px; height: 44px; padding: 0 var(--s4);
+  font: inherit; font-size: var(--t-sm); font-weight: 600; color: var(--ink); cursor: pointer;
+  background: transparent; border: 1px solid var(--steel); border-radius: 22px;
+}
+.panel-toggle-icon { width: 16px; height: 10px; border-block: 1.5px solid currentColor; position: relative; }
+.panel-toggle-icon::after { content: ''; position: absolute; left: 0; right: 4px; top: 50%; border-top: 1.5px solid currentColor; transform: translateY(-50%); }
+.panel-toggle:hover { border-color: var(--ink-2); }
+.panel-toggle[aria-expanded="true"] { background: var(--edge); border-color: var(--ink); }
 
 /* arrival: the chrome fades up; the drawing assembles itself on the canvas */
 @keyframes chrome-in { from { opacity: 0; } }
-.app-header, #deck, #panel { animation: chrome-in 300ms ease-out both; }
+.topbar, #lessons, #deck { animation: chrome-in 300ms ease-out both; }
 
 .app-main {
-  display: grid; min-height: 0;
-  grid-template-columns: 1fr var(--panel-w);
-  grid-template-rows: 1fr var(--deck-h);
-  grid-template-areas: 'stage panel' 'deck panel';
+  display: grid; min-height: 0; position: relative; /* the drawer's containing block */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--lessons-h) var(--deck-h);
+  grid-template-areas: 'stage' 'lessons' 'deck';
 }
-#stage { grid-area: stage; min-width: 0; min-height: 0; position: relative; padding: var(--gutter); }
+#stage { grid-area: stage; min-width: 0; min-height: 0; position: relative; }
 /* two slots a view can sit in; the host moves each view's container between them */
 .stage-main {
-  position: absolute; left: var(--gutter); top: calc(var(--gutter) + var(--strip-h));
-  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter) - var(--tools-h) - var(--strip-h));
+  position: absolute; z-index: var(--z-view); left: 0; right: 0; top: var(--strip-h); bottom: var(--tools-h);
 }
-#stage[data-tools] { --tools-h: 58px; }
 .stage-inset {
-  position: absolute; z-index: 1; left: var(--gutter); bottom: var(--gutter);
-  width: calc(var(--inset) - var(--gutter)); height: calc(var(--inset) - var(--gutter));
+  position: absolute; z-index: var(--z-inset); left: var(--gutter); bottom: var(--s4);
+  width: calc(var(--inset) - var(--gutter)); height: calc(var(--inset) - var(--s4));
   padding: 0; overflow: hidden; cursor: pointer;
-  background: var(--ground); border: 1px solid var(--third); border-radius: 4px;
+  background: var(--ground); border: 1px solid var(--steel); border-radius: 4px;
 }
 .stage-inset[hidden] { display: none; }
 .stage-inset:hover { border-color: var(--ink); }
@@ -112,48 +180,53 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 .view { position: absolute; inset: 0; }
 .view-canvas { display: block; width: 100%; height: 100%; }
 
-/* ---- stage toolbar: bottom centre, or centred in the room right of the inset ---- */
+/* the tachometer arc's layer (filled in Task 2): over the views, never in the way of a pointer */
+.layer-tach { position: absolute; inset: 0; z-index: var(--z-tach); pointer-events: none; }
+.layer-tach:empty { display: none; }
+
+/* the lesson row: a hairline across the stage's lower edge, above the deck (filled in Task 3) */
+#lessons { grid-area: lessons; min-width: 0; margin: 0 var(--gutter); border-top: 1px solid var(--edge); }
+
+/* ---- view toolbar: top left under the title ---- */
 .stage-tools {
-  position: absolute; z-index: 2; left: var(--gutter); right: var(--gutter); bottom: 6px;
-  display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none;
+  position: absolute; z-index: var(--z-toolbar); left: var(--gutter); top: var(--s2);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none;
 }
-#stage[data-inset] .stage-tools { left: calc(var(--inset) + var(--s3)); }
 .toolbar {
   display: flex; align-items: center; gap: 2px; padding: 2px; pointer-events: auto;
-  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 8px;
 }
-.toolbar-sep { width: 1px; height: 24px; margin: 0 var(--s1); background: var(--steel-2); }
+.toolbar-sep { width: 1px; height: 24px; margin: 0 var(--s1); background: var(--edge); }
 .tool {
   display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
-  color: var(--third); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+  color: var(--ink-2); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
 }
 .tool svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.tool:hover { color: var(--ink); border-color: var(--steel-2); }
-.tool[aria-pressed="true"] { color: var(--ink); background: var(--steel-1); border-color: var(--steel-3); }
-.tool[aria-disabled="true"] { color: var(--steel-3); cursor: default; }
+.tool:hover { color: var(--ink); border-color: var(--edge); }
+.tool[aria-pressed="true"] { color: var(--ink); background: var(--edge); border-color: var(--steel); }
+.tool[aria-disabled="true"] { color: var(--steel); cursor: default; }
 .tool[aria-disabled="true"]:hover { border-color: transparent; }
 .tool:focus-visible { outline-offset: -2px; }
-.toolbar-hint { margin: 0; font-size: 0.6875rem; line-height: 16px; color: var(--third); white-space: nowrap; }
+.toolbar-hint { margin: 0; padding-left: var(--s1); font-size: 0.6875rem; line-height: 16px; color: var(--ink-2); white-space: nowrap; }
 .toolbar-hint[hidden] { display: none; }
 /* phones: how to move the camera, once, over the bottom of the main view until the first touch */
 .touch-hint {
-  position: absolute; z-index: 2; left: 50%; bottom: calc(var(--tools-h) + var(--gutter) + var(--s2)); transform: translateX(-50%);
+  position: absolute; z-index: var(--z-toolbar); left: 50%; bottom: calc(var(--tools-h) + var(--s4)); transform: translateX(-50%);
   margin: 0; padding: var(--s1) var(--s3); font-size: var(--t-xs); line-height: 1.4; color: var(--ink); white-space: nowrap;
-  pointer-events: none; background: var(--surface); border: 1px solid var(--steel-2); border-radius: 12px;
+  pointer-events: none; background: var(--surface); border: 1px solid var(--edge); border-radius: 12px;
 }
 .touch-hint[hidden] { display: none; }
 
 /* ---- callouts: cards on leader lines over the 3D view, sitting exactly on the main slot ---- */
 .callout-layer {
-  position: absolute; z-index: 1; left: var(--gutter); top: calc(var(--gutter) + var(--strip-h));
-  width: calc(100% - 2 * var(--gutter)); height: calc(100% - 2 * var(--gutter) - var(--tools-h) - var(--strip-h));
+  position: absolute; z-index: var(--z-callouts); left: 0; right: 0; top: var(--strip-h); bottom: var(--tools-h);
   pointer-events: none; transition: opacity 200ms ease-out;
 }
 .callout-layer[hidden] { display: none; }
 .callout-layer[data-off] { opacity: 0; visibility: hidden; transition: none; }
 .callout-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.callout-lines line { stroke: var(--third); stroke-width: 1; }
-.callout-lines circle { fill: var(--ground); stroke: var(--third); stroke-width: 1; }
+.callout-lines line { stroke: var(--ink-2); stroke-width: 1; }
+.callout-lines circle { fill: var(--ground); stroke: var(--ink-2); stroke-width: 1; }
 /* a leader to an anchor hidden behind another part is dashed, as a hidden line is in a drawing */
 .callout-lines .is-hidden line { stroke-dasharray: 3 3; }
 .callout-lines .is-hidden circle { fill: none; }
@@ -161,72 +234,78 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   position: absolute; left: 0; top: 0; width: clamp(176px, 21%, 236px);
   display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3);
   font: inherit; text-align: left; color: var(--ink); cursor: pointer; pointer-events: auto;
-  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
 }
 .callout[hidden] { display: none; }
-.callout:hover { border-color: var(--third); }
+.callout:hover { border-color: var(--steel); }
 .callout-title { font-size: var(--t-sm); font-weight: 600; line-height: 1.25; }
-.callout-text { font-size: var(--t-xs); line-height: 1.4; color: var(--third); }
+.callout-text { font-size: var(--t-xs); line-height: 1.4; color: var(--ink-2); }
 
 /* ---- 3D loader, over the stage; the schematic stays usable underneath ---- */
 .loader {
-  /* centred in the room left of the cluster (300px and its 16px margin, top right), clear of it at
-     every width; over the overlay */
-  position: absolute; z-index: 3; top: var(--s4); left: calc((100% - 316px) / 2);
-  width: min(220px, calc(100% - 316px - 2 * var(--gutter))); transform: translateX(-50%);
-  padding: var(--s2) var(--s3); font-size: var(--t-xs); color: var(--ink); pointer-events: none;
-  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
+  /* centred in the room left of the readings (300px and the gutter, top right), clear of them */
+  position: absolute; z-index: var(--z-loader); top: var(--s4); left: calc((100% - 300px - var(--gutter)) / 2);
+  width: min(220px, calc(100% - 300px - 3 * var(--gutter))); transform: translateX(-50%);
+  padding: var(--s2) var(--s3); font-size: var(--t-xs); font-variant-numeric: tabular-nums; color: var(--ink); pointer-events: none;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
   transition: opacity 300ms ease-out;
 }
 .loader[data-done] { opacity: 0; }
 .loader-line { display: flex; justify-content: space-between; gap: var(--s3); }
 .loader-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.loader-pct { color: var(--third); }
-.loader-bar { height: 2px; margin-top: var(--s2); background: var(--steel-1); overflow: hidden; }
+.loader-pct { color: var(--ink-2); }
+.loader-bar { height: 2px; margin-top: var(--s2); background: var(--edge); overflow: hidden; }
 .loader-fill {
   height: 100%; background: var(--ink); transform-origin: left; transform: scaleX(var(--v, 0));
   transition: transform 200ms ease-out;
 }
 #deck:empty { display: none; }
-#deck {
-  grid-area: deck; min-width: 0; position: relative;
-  padding: var(--s4) var(--gutter);
-  background: var(--surface);
-  border-top: 1px solid var(--steel-1);
-}
+#deck { grid-area: deck; min-width: 0; position: relative; padding: var(--s3) var(--gutter) var(--s4); }
+
+/* ---- the drawer (temporary: the panel over the right of the stage until Task 4) ---- */
 #panel {
-  grid-area: panel; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  position: relative; /* contains the absolutely placed screen-reader text inside it */
+  position: absolute; z-index: var(--z-drawer); top: 0; right: 0; bottom: 0; width: min(var(--drawer-w), 100%);
+  overflow-y: auto; overscroll-behavior: contain;
   padding: var(--gutter);
   background: var(--surface);
-  border-left: 1px solid var(--steel-1);
+  border-left: 1px solid var(--edge);
 }
+#panel[hidden] { display: none; }
 
-/* without JavaScript the panel is empty: it goes, and the note takes the width */
-#panel:empty, #stage:not(:has(.stage-main)) { display: none; }
-.app-main:has(> #panel:empty) { grid-template-columns: 1fr; }
-.app-main > noscript { display: block; grid-area: stage; flex: 1 1 0; min-height: 0; overflow-y: auto; }
+/* without JavaScript the panel, stage and lesson row are empty: they go, and the note takes the stage */
+#panel:empty, #stage:not(:has(.stage-main)), .app-main:not(:has(.stage-main)) > #lessons { display: none; }
+.app-main > noscript { display: block; grid-area: stage; min-height: 0; overflow-y: auto; }
 .noscript-note { max-width: 40rem; padding: var(--gutter); }
-.noscript-note table { border-collapse: collapse; margin-top: var(--s4); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.noscript-note table { border-collapse: collapse; margin-top: var(--s4); font-variant-numeric: tabular-nums; }
 .noscript-note th, .noscript-note td { padding: var(--s1) var(--s4) var(--s1) 0; text-align: left; font-weight: 400; }
-.noscript-note th { color: var(--third); }
+.noscript-note th { color: var(--ink-2); }
 
-/* ---- below 900px: one column ---- */
+/* ---- below 900px: the top bar wraps the chip under the title; the rest is Task 6 ---- */
 @media (max-width: 899.98px) {
-  :root { --gutter: 16px; }
-  .app-header h1 { font-size: var(--t-md); }
-  .title-note { display: none; }
-  /* stage, panel and deck share the height under the header; the deck stays in thumb reach */
-  .app-main { display: flex; flex-direction: column; }
-  #stage { flex: 0 0 46%; padding: var(--gutter); }
-  #panel { flex: 1 1 0; border-left: 0; border-top: 1px solid var(--steel-1); }
-  #deck { order: 1; flex: 0 0 var(--deck-h); padding: var(--s3) var(--gutter); }
-}
-
-@media (max-width: 899.98px) {
+  :root { --gutter: 16px; --lessons-h: 28px; }
+  .app { grid-template-rows: auto minmax(0, 1fr); }
+  .topbar {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title toggle' 'mode mode';
+    column-gap: var(--s2); row-gap: var(--s1); padding: var(--s3) var(--gutter) var(--s2);
+  }
+  .title { grid-area: title; }
+  /* the whole title at 360px and up: it measures about 15.7 times its font size, so 4.8vw gives
+     271px in the 276px left of the toggle at 360px, and 293px in 306px at 390px. Narrower than
+     that it ellipsizes rather than run under the toggle. */
+  .topbar h1 { font-size: clamp(1rem, 4.8vw, 1.375rem); overflow: hidden; text-overflow: ellipsis; }
+  .title-note { font-size: var(--t-xs); }
+  #mode { grid-area: mode; justify-content: flex-start; }
+  /* a round 44px button: its name stays in the accessibility tree, the title keeps the width */
+  .panel-toggle { grid-area: toggle; align-self: start; justify-content: center; width: 44px; padding: 0; }
+  .panel-toggle-text {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  #stage[data-tools] { --tools-h: 52px; }
   .tool:not([data-essential]), .toolbar-sep, .toolbar-hint { display: none; }
-  .stage-tools { bottom: var(--s2); }
-  #stage[data-tools] { --tools-h: 46px; }
+  /* on phones the toolbar stays a band under the view, centred */
+  .stage-tools { top: auto; bottom: 0; left: var(--gutter); right: var(--gutter); align-items: center; }
+  #deck { padding: var(--s2) var(--gutter); }
+  #panel { border-left: 0; }
 }
 
 /* ---- control deck ---- */
@@ -237,10 +316,10 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   user-select: none; -webkit-user-select: none;
 }
 .deck-cell { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: var(--s1); }
-.deck-caption { display: flex; align-items: baseline; gap: var(--s2); color: var(--third); line-height: 1.2; white-space: nowrap; }
+.deck-caption { display: flex; align-items: baseline; gap: var(--s2); color: var(--ink-2); line-height: 1.2; white-space: nowrap; }
 .deck-key {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--t-xs);
-  color: var(--third); padding: 0 var(--s1); border: 1px solid var(--steel-2); border-radius: 3px;
+  color: var(--ink-2); padding: 0 var(--s1); border: 1px solid var(--edge); border-radius: 3px;
 }
 .deck-stack { display: flex; flex-direction: column; justify-content: space-between; gap: var(--s1); }
 .deck-shift { display: flex; gap: var(--s2); }
@@ -248,45 +327,45 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 /* sliders share an instrument look: a steel housing that brightens to ink when held */
 [role="slider"] {
   position: relative; flex: none; height: var(--widget-h); min-width: 44px; min-height: 44px;
-  background: var(--steel-1); border: 1px solid var(--steel-2); border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
   touch-action: none; cursor: grab;
 }
-[role="slider"][data-active] { cursor: grabbing; border-color: var(--third); }
+[role="slider"][data-active] { cursor: grabbing; border-color: var(--ink-2); }
 
 .deck-throttle { width: 44px; overflow: hidden; }
 .deck-throttle-fill {
   position: absolute; left: 0; right: 0; bottom: 0; height: 100%;
-  background: var(--steel-2); transform-origin: bottom; transform: scaleY(var(--v, 0));
+  background: var(--steel); transform-origin: bottom; transform: scaleY(var(--v, 0)); /* 3:1 on the surface */
 }
 .deck-throttle-grip {
   position: absolute; left: 4px; right: 4px; bottom: 2px; height: var(--grip-h);
-  border-radius: 4px; background: var(--steel-3); border: 1px solid var(--ink);
-  background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--steel-2) 3px 4px);
+  border-radius: 4px; background: var(--ink-2); border: 1px solid var(--ink);
+  background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--steel) 3px 4px);
   transform: translateY(calc(var(--v, 0) * (var(--grip-h) + 6px - var(--widget-h))));
 }
 
 .deck-clutch { width: 128px; overflow: hidden; }
 .deck-clutch-bar {
   position: absolute; left: 10px; right: 10px; top: 12px; height: 12px;
-  border-radius: 6px; background: var(--steel-3);
+  border-radius: 6px; background: var(--steel);
 }
 .deck-clutch-lever {
   position: absolute; left: 12px; right: 14px; top: 28px; height: 8px;
-  border-radius: 4px; background: var(--third);
+  border-radius: 4px; background: var(--ink-2);
   transform-origin: calc(100% - 4px) 50%;
   transform: translateY(calc((1 - var(--v, 0)) * 6px)) rotate(calc((var(--v, 0) - 1) * 11deg));
 }
 .deck-clutch[data-active] .deck-clutch-lever, .deck-pedal[data-active] .deck-pedal-arm { background: var(--ink); }
 .deck-pivot {
   position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px;
-  border-radius: 50%; background: var(--steel-1); border: 2px solid var(--ink);
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--ink);
 }
 .deck-clutch-lever .deck-pivot { right: -2px; }
 
 .deck-pedal { width: 88px; }
 .deck-pedal-arm {
   position: absolute; left: 14px; right: 10px; top: 50%; height: 10px; margin-top: -5px;
-  border-radius: 5px; background: var(--third);
+  border-radius: 5px; background: var(--ink-2);
   transform-origin: 6px 50%; transform: rotate(calc(var(--v, 0) * -22deg));
 }
 .deck-pedal-arm .deck-pivot { left: -2px; }
@@ -295,28 +374,28 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   width: var(--btn-w); min-width: 44px; min-height: 44px; flex: 1 1 0; padding: 2px var(--s2);
   font: inherit; line-height: 1.1; color: var(--ink);
-  background: var(--steel-1); border: 1px solid var(--steel-2); border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
   cursor: pointer; touch-action: none;
 }
-.deck-btn:hover { border-color: var(--steel-3); }
-.deck-btn[data-active] { background: var(--steel-2); border-color: var(--ink); }
+.deck-btn:hover { border-color: var(--steel); }
+.deck-btn[data-active] { background: var(--edge); border-color: var(--ink); }
 .deck-tap { width: 56px; }
 .deck-ignition .deck-name::before {
   content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px;
-  border-radius: 50%; border: 1.5px solid var(--third); vertical-align: 0;
+  border-radius: 50%; border: 1.5px solid var(--ink-2); vertical-align: 0;
 }
 .deck-ignition[aria-pressed="true"] .deck-name::before { background: var(--ink); border-color: var(--ink); }
-.deck[data-running] .deck-starter .deck-name { color: var(--third); }
-/* held buttons sit on steel-2, where --third falls below 4.5:1 */
+.deck[data-running] .deck-starter .deck-name { color: var(--ink-2); }
+/* held buttons sit on edge, where ink-3 would fall below 4.5:1: their text goes to ink */
 .deck .deck-btn[data-active] .deck-name, .deck .deck-btn[data-active] .deck-key { color: var(--ink); }
-.deck .deck-btn[data-active] .deck-key { border-color: var(--third); }
+.deck .deck-btn[data-active] .deck-key { border-color: var(--ink-2); }
 /* every button is one row of two: shift up and down, brake and reset, ignition and starter */
 .deck-stack .deck-btn { flex: 1 1 0; }
 /* while the demo rides: how to take over, at the deck's right end, where the controls are */
 .deck-invite {
   /* 20rem holds the sentence on one line at 1440px; narrower decks wrap it to two */
   display: none; align-self: center; max-width: 20rem; margin: 0 0 0 auto;
-  font-size: var(--t-sm); line-height: 1.4; color: var(--third);
+  font-size: var(--t-sm); line-height: 1.4; color: var(--ink-2);
 }
 @media (min-width: 1280px) {
   .deck[data-demo] .deck-invite { display: block; }
@@ -345,80 +424,83 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .deck-cell-throttle { order: 4; }
 }
 
-/* ---- stage overlay: instrument cluster and part card, over the views and under the loader ---- */
-.stage-overlay {
-  position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  display: flex; flex-direction: column; align-items: flex-end; gap: var(--s2);
-  padding: var(--s4) var(--s4) calc(var(--tools-h) + var(--s4));
+/* ---- readings, temporarily the old cluster as a plain overlay at the stage's top right (Task 2
+   replaces it with the gear numeral, speed and rpm) ---- */
+.layer-readings {
+  position: absolute; z-index: var(--z-readings); top: var(--s4); right: var(--gutter); width: 300px;
+  pointer-events: none;
 }
 .cluster, .part-card {
   width: 300px; pointer-events: auto;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid var(--steel-2); border-radius: 8px;
+  border: 1px solid var(--edge); border-radius: 8px;
 }
 /* the instruments are read at a glance: an opaque face, never the model moving through it */
 .cluster {
-  flex: none; max-height: 220px; padding: var(--s3) 9px var(--s2); /* 9px: a 280px tachometer track in 300px */
+  max-height: 220px; padding: var(--s3) 9px var(--s2); /* 9px: a 280px tachometer track in 300px */
   background: var(--surface);
   display: grid; grid-template-columns: auto 1fr; grid-template-areas: 'gear figures' 'tach tach';
   column-gap: var(--s4); row-gap: var(--s2); align-items: end;
 }
 .cl-gear { grid-area: gear; display: flex; flex-direction: column; }
-.cl-label, .cl-unit { font-family: var(--font-text); font-size: var(--t-xs); line-height: 1.2; color: var(--third); }
-.cl-gear-value { min-width: 1ch; font-size: 72px; font-weight: 600; line-height: 0.9; text-align: center; }
+.cl-label, .cl-unit { font-family: var(--font-text); font-size: var(--t-xs); line-height: 1.2; color: var(--ink-2); }
+.cl-gear-value { min-width: 1ch; font-size: 72px; line-height: 0.9; text-align: center; }
 .cl-figures { grid-area: figures; display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1); padding-bottom: 4px; }
 .cl-line { display: flex; align-items: baseline; gap: var(--s1); }
-.cl-rpm-value { font-size: var(--t-xl); font-weight: 500; line-height: 1.1; }
-.cl-speed-value { font-size: var(--t-lg); font-weight: 500; line-height: 1.1; }
+.cl-rpm-value { font-size: var(--t-xl); line-height: 1.1; }
+.cl-speed-value { font-size: var(--t-lg); line-height: 1.1; }
 .cl-unit { min-width: 2.6em; }
 
 /* tachometer: every length a share of its width, so it scales with the cluster */
 .tach { grid-area: tach; position: relative; height: 40px; }
 .tach-track {
   position: absolute; left: 0; right: 0; top: 4px; height: 12px; overflow: hidden;
-  background: var(--steel-1); border: 1px solid var(--third); border-radius: 2px;
+  background: var(--surface); border: 1px solid var(--steel); border-radius: 2px;
 }
 .tach-fill {
-  position: absolute; inset: 0; background: var(--steel-4); /* 3.65:1 on the track */
+  position: absolute; inset: 0; background: var(--steel); /* 3.31:1 on the ground track */
   transform-origin: left; transform: scaleX(var(--v, 0));
 }
 /* the last 1,000 rpm before the limiter: an opaque hatch, so it reads the same under the fill */
 .tach-band {
   position: absolute; top: 0; bottom: 0; right: 0; width: calc(var(--band) * 100%);
-  border-left: 1px solid var(--third);
-  background: repeating-linear-gradient(135deg, var(--third) 0 1.5px, var(--steel-1) 1.5px 4px);
+  border-left: 1px solid var(--ink-2);
+  background: repeating-linear-gradient(135deg, var(--ink-2) 0 1.5px, var(--ground) 1.5px 4px);
 }
 .tach-needle-run { position: absolute; left: 0; right: 0; top: 0; height: 20px; transform: translateX(calc(var(--v, 0) * 100%)); }
 .tach-needle { position: absolute; left: -1.5px; top: 0; bottom: 0; width: 3px; background: var(--ink); border-radius: 1px; }
 .tach-ticks { position: absolute; left: 0; right: 0; top: 17px; height: 6px; }
-.tach-tick { position: absolute; top: 0; width: 1px; height: 3px; margin-left: -0.5px; background: var(--third); }
+.tach-tick { position: absolute; top: 0; width: 1px; height: 3px; margin-left: -0.5px; background: var(--ink-2); }
 .tach-tick-major { height: 6px; }
-.tach-numerals { position: absolute; left: 0; right: 0; top: 24px; height: 14px; font-size: 0.6875rem; line-height: 14px; color: var(--third); }
+.tach-numerals { position: absolute; left: 0; right: 0; top: 24px; height: 14px; font-size: 0.6875rem; line-height: 14px; color: var(--ink-2); }
 .tach-numeral { position: absolute; top: 0; transform: translateX(-50%); }
 .tach-numeral:first-child { transform: none; }
 .tach-numeral:last-child { transform: translateX(-100%); }
 .tach-unit {
-  position: absolute; left: 16.667%; top: 24px; transform: translateX(-50%); white-space: nowrap; font-family: var(--font-text); font-size: 0.6875rem; line-height: 14px; color: var(--third);
+  position: absolute; left: 16.667%; top: 24px; transform: translateX(-50%); white-space: nowrap; font-family: var(--font-text); font-size: 0.6875rem; line-height: 14px; color: var(--ink-2);
 }
 
-/* ---- the selected part, under the cluster ---- */
-.part-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: var(--s3) var(--s4) var(--s4); }
+/* ---- the selected part, at the stage's lower right ---- */
+.part-card {
+  position: absolute; z-index: var(--z-card); right: var(--gutter); bottom: var(--s4);
+  max-height: calc(100% - 220px - 3 * var(--s4)); overflow-y: auto; padding: var(--s3) var(--s4) var(--s4);
+}
 .part-card[hidden] { display: none; }
 .card-head { display: flex; align-items: center; justify-content: space-between; margin: -4px -8px var(--s1) 0; }
-.card-kicker { font-size: var(--t-xs); color: var(--third); }
+.card-kicker { font-size: var(--t-xs); color: var(--ink-2); }
 .card-name { font-size: var(--t-lg); }
 .card-role { margin: var(--s2) 0 0; font-size: var(--t-sm); line-height: 1.45; color: var(--ink); }
 .card-close {
   display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
-  font: inherit; font-size: var(--t-xl); line-height: 1; color: var(--third);
+  font: inherit; font-size: var(--t-xl); line-height: 1; color: var(--ink-2);
   background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
 }
-.card-close:hover { color: var(--ink); border-color: var(--steel-2); }
+.card-close:hover { color: var(--ink); border-color: var(--edge); }
 
 /* ---- below 900px: the cluster a strip across the top, the part card a strip above the toolbar ---- */
 @media (max-width: 899.98px) {
   #stage { --strip-h: 52px; }
-  .stage-overlay { padding: 0 0 var(--tools-h); justify-content: space-between; align-items: stretch; }
+  .layer-readings { top: 0; left: 0; right: 0; width: auto; }
   .cluster, .part-card { width: auto; border-radius: 0; border-width: 0; }
   .cluster {
     height: 52px; padding: var(--s2) var(--gutter) 0; border-bottom-width: 1px;
@@ -436,7 +518,7 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .tach-needle-run { height: 4px; }
   .tach-ticks, .tach-numerals, .tach-unit { display: none; }
   .part-card {
-    margin-bottom: var(--s2); padding: var(--s2) var(--s2) var(--s2) var(--gutter); border-width: 1px 0;
+    left: 0; right: 0; bottom: calc(var(--tools-h) + var(--s2)); max-height: none; padding: var(--s2) var(--s2) var(--s2) var(--gutter); border-width: 1px 0;
     display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name close' 'role close';
     column-gap: var(--s2); align-items: center; overflow: hidden;
   }
@@ -444,21 +526,21 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .card-kicker { display: none; }
   .card-close { grid-area: close; width: 44px; height: 44px; }
   .card-name { grid-area: name; font-size: var(--t-md); }
-  .card-role { grid-area: role; margin: 0; font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--third); }
+  .card-role { grid-area: role; margin: 0; font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
 }
 
 /* ---- mode chip ---- */
 .chip, .chip-btn {
   display: inline-flex; align-items: center; gap: var(--s2); height: 32px; padding: 0 var(--s3);
   font: inherit; font-size: var(--t-sm); line-height: 1; white-space: nowrap;
-  border: 1px solid var(--steel-2); border-radius: 16px; color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 16px; color: var(--ink);
 }
 .chip { background: transparent; }
 .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
-.chip-hint { color: var(--third); padding-left: var(--s2); border-left: 1px solid var(--steel-2); }
+.chip-hint { color: var(--ink-2); padding-left: var(--s2); border-left: 1px solid var(--edge); }
 .chip-hint-short { display: none; }
-.chip-btn { background: var(--steel-1); border-color: var(--steel-3); cursor: pointer; }
-.chip-btn:hover { border-color: var(--third); }
+.chip-btn { background: var(--surface); border-color: var(--steel); cursor: pointer; }
+.chip-btn:hover { border-color: var(--ink-2); }
 /* at 1280px and wider the invitation to take over sits at the controls, so the chip is status only */
 @media (min-width: 1280px) {
   .chip-hint { display: none; }
@@ -469,21 +551,21 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .chip-hint-short { display: inline; }
 }
 
-/* ---- status line, over the top of the stage ---- */
+/* ---- status line, under the toolbar at the stage's top left ---- */
 .status {
-  position: absolute; z-index: 2; top: var(--s4); left: var(--gutter);
-  width: fit-content; max-width: calc(100% - 2 * var(--gutter) - 316px); margin: 0;
+  position: absolute; z-index: var(--z-status); top: 76px; left: var(--gutter);
+  width: fit-content; max-width: calc(100% - 3 * var(--gutter) - 300px); margin: 0;
   padding: var(--s2) var(--s3); font-size: var(--t-sm); color: var(--ink);
-  background: var(--surface); border: 1px solid var(--steel-2); border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
 }
 /* stays in the accessibility tree while empty, so a new message is announced */
 .status:empty { padding: 0; border-color: transparent; background: transparent; }
 
 /* ---- information panel ---- */
-.tabs { display: flex; gap: var(--s1); margin: 0 calc(-1 * var(--s2)); border-bottom: 1px solid var(--steel-1); }
+.tabs { display: flex; gap: var(--s1); margin: 0 calc(-1 * var(--s2)); border-bottom: 1px solid var(--edge); }
 .tab {
   position: relative; flex: 0 0 auto; padding: var(--s3) var(--s2);
-  font: inherit; font-size: var(--t-sm); line-height: 1.2; color: var(--third);
+  font: inherit; font-size: var(--t-sm); line-height: 1.2; color: var(--ink-2);
   background: none; border: 0; border-radius: 4px 4px 0 0; cursor: pointer;
 }
 .tab:hover { color: var(--ink); }
@@ -498,56 +580,56 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 .prose p { margin: 0 0 var(--s3); }
 .prose h3 { margin: var(--s6) 0 var(--s2); font-size: var(--t-sm); font-weight: 600; }
 .prose h3:first-child { margin-top: 0; }
-.prose .note { margin-top: var(--s4); font-size: var(--t-xs); line-height: 1.5; color: var(--third); }
+.prose .note { margin-top: var(--s4); font-size: var(--t-xs); line-height: 1.5; color: var(--ink-2); }
 .prose .note:first-child { margin-top: 0; }
 
 .keys { margin: var(--s4) 0 0; }
 .keys-row {
   display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: var(--s3);
-  padding: var(--s2) 0; border-top: 1px solid var(--steel-1);
+  padding: var(--s2) 0; border-top: 1px solid var(--edge);
 }
 .keys-row dt, .keys-row dd { margin: 0; }
 .key {
   display: inline-block; min-width: 28px; padding: 2px var(--s2); text-align: center;
   font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1.4; color: var(--ink);
-  border: 1px solid var(--steel-2); border-bottom-width: 2px; border-radius: 4px;
+  border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 4px;
 }
 
 .table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--s2)); }
 .data-table {
   width: 100%; border-collapse: collapse;
-  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums; font-size: var(--t-sm);
 }
 .data-table th, .data-table td { padding: var(--s2); text-align: right; white-space: nowrap; }
 .data-table thead th {
   font-family: var(--font-text); font-size: var(--t-xs); font-weight: 500; line-height: 1.3;
-  color: var(--third); vertical-align: bottom; white-space: normal; border-bottom: 1px solid var(--steel-2);
+  color: var(--ink-2); vertical-align: bottom; white-space: normal; border-bottom: 1px solid var(--edge);
 }
 .data-table th:first-child { text-align: left; }
-.data-table tbody th { font-weight: 400; color: var(--third); }
-.data-table tbody tr + tr > * { border-top: 1px solid var(--steel-1); }
-.data-table tr[aria-current="true"] > * { background: var(--steel-1); color: var(--ink); }
+.data-table tbody th { font-weight: 400; color: var(--ink-2); }
+.data-table tbody tr + tr > * { border-top: 1px solid var(--edge); }
+.data-table tr[aria-current="true"] > * { background: var(--surface); color: var(--ink); }
 .data-table tr[aria-current="true"] > :first-child { box-shadow: inset 2px 0 0 var(--ink); }
 
 .spec { margin: 0; }
 .spec-row {
   display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4);
-  padding: var(--s2) 0; border-top: 1px solid var(--steel-1);
+  padding: var(--s2) 0; border-top: 1px solid var(--edge);
 }
 .spec-row:first-child { border-top: 0; padding-top: 0; }
-.spec-row dt { font-size: var(--t-sm); color: var(--third); }
+.spec-row dt { font-size: var(--t-sm); color: var(--ink-2); }
 .spec-row dd { margin: 0; text-align: right; }
-.spec-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
-.spec-unit { margin-left: var(--s1); font-size: var(--t-xs); color: var(--third); }
+.spec-value { font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
+.spec-unit { margin-left: var(--s1); font-size: var(--t-xs); color: var(--ink-2); }
 
 .part-list { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
 .part-btn {
   width: 100%; height: 100%; min-height: 36px; padding: var(--s1) var(--s3);
   font: inherit; font-size: var(--t-sm); line-height: 1.2; text-align: left; color: var(--ink);
-  background: var(--steel-1); border: 1px solid var(--steel-2); border-radius: 6px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--edge); border-radius: 6px; cursor: pointer;
 }
-.part-btn:hover { border-color: var(--steel-3); }
-.part-btn[aria-pressed="true"] { background: var(--steel-2); border-color: var(--ink); }
+.part-btn:hover { border-color: var(--steel); }
+.part-btn[aria-pressed="true"] { background: var(--edge); border-color: var(--ink); }
 
 @media (max-width: 899.98px) {
   .chip-btn { height: 32px; padding: 0 var(--s3); font-size: var(--t-xs); }

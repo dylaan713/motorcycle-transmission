@@ -132,7 +132,7 @@ export function createFlow(): Flow {
       ctx.setLineDash(path.torque < 0 ? DASH : NO_DASH);
       const w = flowWidth(path.torque);
       trace(); ctx.strokeStyle = COLORS.ground; ctx.lineWidth = w + 3.5; ctx.stroke();
-      trace(); ctx.strokeStyle = COLORS.signal; ctx.lineWidth = w; ctx.stroke();
+      trace(); ctx.strokeStyle = COLORS.torque; ctx.lineWidth = w; ctx.stroke();
       ctx.setLineDash(NO_DASH);
       ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
     },

@@ -42,7 +42,7 @@ export function drawSliderWeb(p: Painter, shapes: readonly PartShape[]): void {
   p.fade('gear3in');
   p.box(w.x, w.y, w.x + w.w, w.y + w.h, COLORS.steel2, null);
   if (p.hot.has('gear3in') && p.hot.has('gear4in')) p.hotBox(w.x, w.y, w.x + w.w, w.y + w.h);
-  p.box(w.x, w.y, w.x + w.w, w.y + w.h, null, COLORS.third);
+  p.box(w.x, w.y, w.x + w.w, w.y + w.h, null, COLORS.ink3);
 }
 
 /**
@@ -83,7 +83,7 @@ function drawForkRod(p: Painter, id: PartId, body: number, topY: number): void {
   p.fade(id);
   p.quad(body, CURSOR_Y, body, topY, FORK_W / 2);
   ctx.fillStyle = COLORS.steel3; ctx.fill();
-  ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = COLORS.ink3; ctx.lineWidth = 1; ctx.stroke();
 }
 
 /** Fork C's rod, which passes behind the output shaft and its gears. */

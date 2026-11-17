@@ -56,7 +56,7 @@ export function drawDrum(p: Painter, state: SimState): void {
     const y = rowY(DETENT_ANGLES[i], cur);
     if (y < BAND.y0 + 1 * MM || y > BAND.y1 - 1 * MM) continue;
     const seated = state.drum.detent === DETENT_NAMES[i];
-    ctx.fillStyle = seated ? COLORS.ink : COLORS.third; ctx.textAlign = 'right';
+    ctx.fillStyle = seated ? COLORS.ink : COLORS.ink3; ctx.textAlign = 'right';
     ctx.fillText(DETENT_LABELS[i], Math.round(bx0 - 8), Math.round(p.Y(y)));
   }
 }
@@ -76,7 +76,7 @@ export function drawStar(p: Painter, state: SimState): void {
   }
   ctx.closePath();
   ctx.fillStyle = COLORS.steel2; ctx.fill();
-  ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = COLORS.ink3; ctx.lineWidth = 1; ctx.stroke();
   p.fillCircle(null, STAR.x, STAR.y, 3 * MM, COLORS.steel3);
   // the detent arm's roller rides the profile where it faces the cursor
   const rx = STAR.x + starRadius(cur) + ROLLER_R;

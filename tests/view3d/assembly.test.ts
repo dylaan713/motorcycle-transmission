@@ -106,8 +106,8 @@ test('materials: tones from the tokens; torque lights one part only', () => {
   expect(g.children.some((c) => (c as THREE.LineSegments).isLineSegments)).toBe(true);
   setTorque(g, 1);
   const m = (g.children[0] as THREE.Mesh).material as THREE.MeshLambertMaterial;
-  expect(m.color.getHexString()).toBe(new THREE.Color(COLORS.signal).getHexString());
-  expect(m.emissive.r).toBeCloseTo(new THREE.Color(COLORS.signal).r * 0.35, 9);
+  expect(m.color.getHexString()).toBe(new THREE.Color(COLORS.torque).getHexString());
+  expect(m.emissive.r).toBeCloseTo(new THREE.Color(COLORS.torque).r * 0.35, 9);
   expect(g.userData.torque).toBe(1);
   setTorque(g, 0);
   expect('#' + m.color.getHexString()).toBe(COLORS.steel3.toLowerCase());
