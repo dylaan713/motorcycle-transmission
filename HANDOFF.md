@@ -16,17 +16,14 @@ working tree: run `git status` first, then `npm test` and `npm run typecheck`, a
 whether to finish it or discard it. Build ledgers (git-ignored, on disk) are under
 `.superpowers/sdd/<plan name>/progress.md`; findings and briefs sit beside them.
 
-1. **Stage 2, Task 5 fix round** (2D schematic): landed as 6a35356, 51efba5, 71ad4ac, 4b16589
-   (186 tests). It still needs its scoped re-review against `.../task-5-findings.md`
-   (those four commits; the schematic is now split across `src/view2d/`). `SimState.pedal.travel`
-   now exists.
+1. **Stage 2, Task 5 fix round** (2D schematic): done and re-reviewed clean (through 4b16589). Nothing to resume.
 2. **Stage 2, Task 6 fix round** (panel): done and re-reviewed clean (fd3a43c). Nothing to resume.
 3. **Stage 3, Task 4** (3D assembly and pose, plus `src/view3d/materials.ts`). Brief:
    `.superpowers/sdd/2026-11-16-stage-3-3d-model/task-4-brief.md`; the dispatch clarifications are
    summarised in that plan's ledger.
 
-After those: each needs its review (and a re-review for the two fix rounds); then stage 2's
-whole-stage review; stage 3 Task 1 (lazy 3D chunk, loader, stage host) and Task 5 (3D view,
+After that: Task 4 needs its review; stage 2 needs its whole-stage final review and browser
+checks (1440 × 900, 390 × 844, reduced motion, JavaScript off); then stage 3 Task 1 (lazy 3D chunk, loader, stage host) and Task 5 (3D view,
 toolbar, inset, callouts); a visual check in the browser; then stages 4 and 5 from their plans;
 then write and run the stage 6 plan (polish, audits, `README.md`, production build, portfolio
 entry draft).
