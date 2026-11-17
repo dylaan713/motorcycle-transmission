@@ -5,22 +5,24 @@
 - **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) built: shell,
   loop, controls, schematic, readouts and panel all committed; two review fix rounds were in
   flight. Stage 3 (3D): all part geometry built and reviewed; assembly was in flight. Plans for
-  stages 2 to 5 are written. 186 tests passing at commit 4b16589.
+  stages 2 to 5 are written. 212 tests passing at commit bd84360.
 - **Next:** Resume the three pieces that were in flight (below), then stage 3 Tasks 1 and 5, then
   stages 4, 5 and 6.
 
 ### Resume here
 
-Work that was running when the checkpoint was written. Each may have left uncommitted files in the
-working tree: run `git status` first, then `npm test` and `npm run typecheck`, and decide per file
+Status of the three pieces that were running at the checkpoint. All three have since committed;
+the working tree was clean at 19:55. Still, run `git status` first, then `npm test` and `npm run typecheck`, and decide per file
 whether to finish it or discard it. Build ledgers (git-ignored, on disk) are under
 `.superpowers/sdd/<plan name>/progress.md`; findings and briefs sit beside them.
 
 1. **Stage 2, Task 5 fix round** (2D schematic): done and re-reviewed clean (through 4b16589). Nothing to resume.
 2. **Stage 2, Task 6 fix round** (panel): done and re-reviewed clean (fd3a43c). Nothing to resume.
-3. **Stage 3, Task 4** (3D assembly and pose, plus `src/view3d/materials.ts`). Brief:
-   `.superpowers/sdd/2026-11-16-stage-3-3d-model/task-4-brief.md`; the dispatch clarifications are
-   summarised in that plan's ledger.
+3. **Stage 3, Task 4** (3D assembly and pose): landed as bd84360 (212 tests) but NOT yet reviewed.
+   Its report and five open concerns, with the ruling I intend for each, are at the end of
+   `.superpowers/sdd/2026-11-16-stage-3-3d-model/progress.md`. The two that matter: the drawn
+   rotation sense is mirrored for the layout (the bike appears to run backwards), and the detent
+   roller barely moves because the star wheel's notches are too narrow. Fix both, then review.
 
 After that: Task 4 needs its review; stage 2 needs its whole-stage final review and browser
 checks (1440 × 900, 390 × 844, reduced motion, JavaScript off); then stage 3 Task 1 (lazy 3D chunk, loader, stage host) and Task 5 (3D view,
