@@ -1,38 +1,35 @@
 # HANDOFF
 
-## State Update (2026-11-16, 21:50 EST)
+## State Update (2026-11-16, 22:50 EST, owner asleep; overnight run)
 
-- **Done:** Stage 1 (simulation) complete and reviewed. Stage 2 (rideable 2D page) complete; its
-  whole-stage review found 6 defects, 20 minors and 7 design changes, all fixed in commits cf2a0a1,
-  b16bb7d and 3c08636 (re-review running). Stage 3 (3D model): all five tasks built; the 3D view is
-  the main stage view with the schematic as an inset, an instrument cluster, toolbar and callouts.
-  281 tests passing at commit 3c08636; first-paint JavaScript 31.48 kB and the 3D file about
-  155 kB gzipped. Plans for all six stages are written.
-- **Next:** Act on the two reviews that were running (stage 2 fix-wave re-review; stage 3
-  whole-stage review). Then stage 4 (slow motion, exploded view, x-ray, turning parts by hand,
-  part focus), stage 5 (lessons, How it works, glossary, `docs/MODEL.md`), stage 6 (audits,
-  polish, README, production build, portfolio draft).
+- **Done:** Stages 1 and 2 complete and reviewed. Stage 3 (3D model) built; its whole-stage review
+  found 6 defects (bike mirrored left to right, no clutch release mechanism, pawl with no pins,
+  basket with no bearing, chain blob, primary drive out of proportion, flaky test timeouts) and a
+  fix wave is running. Stage 5's nine lessons are written and tested; a copy fix round is running.
+  The owner called the page "kind of boring", was shown three design options and chose
+  **B, "The instrument"** (`docs/design-options/option-b-*.png`, not tracked in git).
+- **Next, in this order:**
+  1. Finish the stage 3 fix wave and its re-review
+     (`.superpowers/sdd/2026-11-16-stage-3-3d-model/final-review-findings.md`, report `final-fix-report.md`).
+  2. Finish the lessons fix round and its re-review
+     (`.superpowers/sdd/2026-11-16-stage-5-teaching-layer/task-1-findings.md`).
+  3. **Stage 3b, the instrument** (visual redesign): `docs/superpowers/plans/2026-11-16-stage-3b-the-instrument.md`.
+  4. Stage 4 (slow motion, exploded view, x-ray, turning parts by hand, part focus), built in the new look.
+  5. Stage 5, remaining tasks (lesson runner, lesson row and step card, How it works, glossary, `docs/MODEL.md`).
+  6. Stage 6 (four audits, fix wave, demo-ride tuning, real-screen pass, README, licences, portfolio
+     draft, production build, final handoff).
 
 ### Resume here
 
 Run `git status`, `npm test` and `npm run typecheck` first. Build ledgers (git-ignored, on disk)
-are under `.superpowers/sdd/<plan name>/progress.md`; findings, briefs and reports sit beside them.
-
-1. **Stage 2 fix-wave re-review**: findings `.superpowers/sdd/2026-11-16-stage-2-2d-panel-and-controls/final-review-findings.md`,
-   implementer's report `final-fix-report.md`, diff `review-final-fix.diff`. If no verdict is in that
-   ledger, re-run the re-review. Known leftover: in the tachometer the "×1,000 rpm" caption overlaps
-   the "10" numeral.
-2. **Stage 3 whole-stage review**: if no result is in `.superpowers/sdd/2026-11-16-stage-3-3d-model/progress.md`,
-   re-run it. Known visual leftovers: the clutch's ring gear is the largest orange shape and is
-   cropped at the right edge of the default view; the gear pedal is cut off at the bottom-left.
-   Then one fix wave for whatever it finds.
-3. **Stages 4, 5 and 6**: run from their plans in `docs/superpowers/plans/`.
+are under `.superpowers/sdd/<plan name>/progress.md`; findings, briefs and reports sit beside
+them. The last line of each ledger says what was in flight.
 
 ### To restart
 
 Open a session in this folder and say: "Read HANDOFF.md and finish them all."
-Keep the Mac plugged in and the lid open; it went to sleep once mid-build and that killed a
-builder. Start a keep-awake first (`caffeinate -i -s -t 43200` in the background).
+Keep the Mac plugged in and the lid open. Start a keep-awake first
+(`caffeinate -i -s -t 43200` in the background).
 
 To see it now: `npm run dev`, then open the address it prints.
 
