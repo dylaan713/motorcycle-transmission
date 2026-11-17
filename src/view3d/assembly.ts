@@ -8,7 +8,7 @@ import { PARAMS } from '../sim/params';
 import { createSimulation } from '../sim/simulation';
 import type { DogSide, SliderId } from '../sim/types';
 import { DIM } from '../geo/dimensions';
-import { dogRing, forkGroovedGear, meshPhase, spurGear } from '../geo/gear';
+import { collaredGear, dogRing, meshPhase, spurGear } from '../geo/gear';
 import { crankshaft, plainShaft, sleeve } from '../geo/shaft';
 import { sprocket } from '../geo/sprocket';
 import { CLUTCH, clutchBasket, clutchHub, clutchSpring, frictionPlate, plateStackOffsets, pressurePlate, springLength, steelPlate } from '../geo/clutch';
@@ -17,11 +17,11 @@ import { chainLink, chainLinkCount, chainPath, rearWheel } from '../geo/finalDri
 import { partMaterial, withEdges } from './materials';
 import type { Tone } from './materials';
 import {
-  CARRIER, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_RADIUS, CRANK, CRANK_AXIS, DETENT_PIVOT, DRUM_AXIS, DRUM_LENGTH,
-  FOLLOWER_OFFSETS, FORK_GROOVE_WIDTH, FORK_ROD, FORK_RODS, FORK_ROD_X, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI,
+  CARRIER, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_FLANGE_RADIUS, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS, COLLAR_SIDE, CRANK, CRANK_AXIS, DETENT_PIVOT, DRUM_AXIS, DRUM_LENGTH,
+  FOLLOWER_OFFSETS, FORK_ROD, FORK_RODS, FORK_ROD_X, FORK_X, FRONT_PITCH_RADIUS, GEARBOX_PSI,
   INPUT_AXIS, INPUT_SHAFT_X, OUTPUT_AXIS, OUTPUT_SHAFT_X, PAWL_ANGLE, PAWL_X, PEDAL_REST, PEDAL_X, PRIMARY_PSI,
   PRIMARY_X, REAR_AXIS, REAR_PITCH_RADIUS, SHIFT_SHAFT_AXIS, SHIFT_SHAFT_RADIUS, SHIFT_SHAFT_X, SLIDER_AXIS,
-  SPROCKET_THICKNESS, SPROCKET_X, STAR_X, WHEEL_X, clutchX, directionOf, forkReach,
+  SLIDER_TOOTH_WIDTH, SPROCKET_THICKNESS, SPROCKET_X, STAR_X, WHEEL_X, clutchX, directionOf, forkReach,
 } from './layout3d';
 import type { Axis } from './layout3d';
 import { poseAssembly } from './pose';
@@ -41,7 +41,9 @@ export interface Rig {
   /** Length each spring geometry was built at; a pose scales it along its axis. */
   springBuiltLength: number;
   chain: {
-    path: ReturnType<typeof chainPath>; count: number;
+    /** The chain loop as placed: front sprocket at the node's origin, rear sprocket at +z. */
+    path: { length: number; pointAt(s: number): { y: number; z: number } };
+    count: number;
     /** Link spacing along the path: its length over the link count, so the loop closes. */
     spacing: number;
     /** Chain travel per radian of the front sprocket: one link per tooth, so rollers stay seated. */
@@ -148,9 +150,12 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       const node = partNode(id, restX, SHAFT_AXIS[shaft]);
       const tone = kind === 'free' ? TONE.freeGear : TONE.fixedGear;
       const base = { teeth: toothCount(shaft, g), module: MODULE, faceWidth: FACE_WIDTH, boreRadius: SHAFT_RADIUS[shaft] };
-      // output sliders carry their fork in a groove cut through the middle of the teeth
-      const geometry = slider !== null && shaft === 'output'
-        ? forkGroovedGear({ ...base, grooveWidth: FORK_GROOVE_WIDTH, grooveRadius: COLLAR_RADIUS[slider] - COLLAR_CLEARANCE })
+      // output sliders carry their fork in a collar beside narrowed teeth
+      const geometry = slider !== null && slider !== 'C' && shaft === 'output'
+        ? collaredGear({
+          ...base, toothWidth: SLIDER_TOOTH_WIDTH, grooveWidth: COLLAR_GROOVE_WIDTH,
+          grooveRadius: COLLAR_RADIUS[slider] - COLLAR_CLEARANCE, flangeRadius: COLLAR_FLANGE_RADIUS, collarSide: COLLAR_SIDE[slider],
+        })
         : spurGear(base);
       // input gears are gear A of meshPhase, at phase 0; output gears take B's phase
       const phase = shaft === 'input' ? 0 : meshPhase(toothCount('input', g), toothCount('output', g), GEARBOX_PSI);
@@ -242,7 +247,10 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
   // ---- final drive ----
   let chainMeshes: Assembly['chain'] | undefined;
   const finalDrive = (): void => {
-    const path = chainPath({ frontRadius: FRONT_PITCH_RADIUS, rearRadius: REAR_PITCH_RADIUS, centreDistance: DIM.chain.centreDistance });
+    const loop = chainPath({ frontRadius: FRONT_PITCH_RADIUS, rearRadius: REAR_PITCH_RADIUS, centreDistance: DIM.chain.centreDistance });
+    // chainPath puts the rear sprocket at z = -centreDistance; here it is behind (+z), so the loop is
+    // mirrored in z. s still runs rear to front along the top run and round the front sprocket.
+    const path = { length: loop.length, pointAt: (s: number) => { const p = loop.pointAt(s); return { y: p.y, z: -p.z }; } };
     const count = chainLinkCount(path.length, DIM.chain.pitch);
     const spacing = path.length / count;
     rig.chain = { path, count, spacing, travelPerRadian: (PARAMS.final.front * spacing) / (2 * Math.PI) };
@@ -261,7 +269,7 @@ export async function buildAssembly(onProgress: (done: number, total: number, la
       { phase: seatPhase(frontWrap / 2, 0, PARAMS.final.front) });
     const rear = partNode('rearSprocket', SPROCKET_X, REAR_AXIS);
     solid(rear, sprocketOf(PARAMS.final.rear, DIM.wheelParts.axleRadius), TONE.chain,
-      { phase: seatPhase(rearStart + (REAR_PITCH_RADIUS * (Math.PI + 2 * b)) / 2, -DIM.chain.centreDistance, PARAMS.final.rear) });
+      { phase: seatPhase(rearStart + (REAR_PITCH_RADIUS * (Math.PI + 2 * b)) / 2, DIM.chain.centreDistance, PARAMS.final.rear) });
     solid(rear, sleeve({ boreRadius: DIM.wheelParts.axleRadius, radius: CARRIER.radius, length: CARRIER.x1 - CARRIER.x0 }), TONE.chain,
       { x: (CARRIER.x0 + CARRIER.x1) / 2 - SPROCKET_X });
     const chain = partNode('chain', SPROCKET_X, OUTPUT_AXIS);

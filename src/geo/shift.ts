@@ -40,20 +40,34 @@ export const DETENT_ARM = DIM.detentArm;
 export const grooveAxialOffset = (slider: SliderId, drumAngle: number): number =>
   grooveCommand(slider, drumAngle) * SLIDER_TRAVEL;
 
-const DETENTS = Object.entries(PARAMS.drum.detents).map(([name, d]) => ({
-  angle: deg(d),
-  depth: name === 'N' ? 0.0015 : 0.003,
-  width: deg(name === 'N' ? 8 : 12),
-}));
+/** Depth of the star wheel's seats below its rim, m: neutral's is shallower. */
+export const STAR_SEAT_DEPTH = { gear: 0.003, neutral: 0.0015 } as const;
+/** Radius of each star wheel seat: the detent roller's, with 0.1 mm to spare, m. */
+export const STAR_SEAT_RADIUS = DETENT_ARM.rollerRadius + 0.0001;
 
-/** Star wheel radius at drum angle θ: a raised-cosine notch at each detent, the neutral one shallower. */
+// Each detent is a circular seat of STAR_SEAT_RADIUS cut into the rim, its floor `depth` below the
+// rim on the detent's ray, so the roller drops right in. Neutral's seat is shallower.
+const DETENTS = Object.entries(PARAMS.drum.detents).map(([name, d]) => {
+  const depth = name === 'N' ? STAR_SEAT_DEPTH.neutral : STAR_SEAT_DEPTH.gear;
+  const centre = DIM.starWheel.radius - depth + STAR_SEAT_RADIUS; // seat centre, from the wheel's axis
+  return { angle: deg(d), depth, centre };
+});
+
+/**
+ * Star wheel radius at drum angle θ: the rim, except across each detent's seat, where the profile
+ * follows the seat circle. Between neighbouring seats the rim is a plateau at full radius.
+ */
 export function starWheelRadiusAt(angle: number): number {
-  let depth = 0;
+  const R = DIM.starWheel.radius, rs = STAR_SEAT_RADIUS;
+  let r: number = R;
   for (const d of DETENTS) {
     const off = Math.atan2(Math.sin(angle - d.angle), Math.cos(angle - d.angle));
-    if (Math.abs(off) < d.width / 2) depth = Math.max(depth, (d.depth * (1 + Math.cos((2 * Math.PI * off) / d.width))) / 2);
+    const s = d.centre * Math.sin(off);
+    if (Math.abs(s) >= rs || Math.cos(off) <= 0) continue;
+    // nearer intersection of the ray at `off` with the seat circle
+    r = Math.min(r, d.centre * Math.cos(off) - Math.sqrt(rs * rs - s * s));
   }
-  return DIM.starWheel.radius - depth;
+  return Math.max(r, 0);
 }
 
 /**

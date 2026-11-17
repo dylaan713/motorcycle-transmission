@@ -158,10 +158,10 @@ test('forks: claw on the slider axis at its groove, guide pin in its drum groove
   }
 });
 
-test('detent roller rides the star wheel profile, dropping into the notches', () => {
+test('detent roller seats in every notch, swinging the arm, and never sinks into the wheel', () => {
   const rr = DETENT_ARM.rollerRadius;
-  const radial: number[] = [];
-  for (let d = 0; d <= 300; d += 2.5) {
+  const radial = new Map<number, number>(), arm = new Map<number, number>();
+  for (let d = 0; d <= 300; d += 1) { // the drum's whole travel, first to sixth
     const s = createSimulation().getState(); s.drum.angle = deg(d); pose(s);
     const roller = toWorld(body('detentArm'), 0, DETENT_ARM.length, 0);
     const star = a.node('starWheel').rotation.x;
@@ -172,16 +172,45 @@ test('detent roller rides the star wheel profile, dropping into the notches', ()
     }
     expect(nearest, `drum at ${d}°`).toBeGreaterThan(rr - 0.00002);   // never sinks into the wheel
     expect(nearest, `drum at ${d}°`).toBeLessThan(rr + 0.00005);      // always touching it
-    radial.push(Math.hypot(roller.y - DRUM_AXIS.y, roller.z - DRUM_AXIS.z));
+    radial.set(d, Math.hypot(roller.y - DRUM_AXIS.y, roller.z - DRUM_AXIS.z));
+    arm.set(d, relAngle(a.node('detentArm')));
   }
-  // The 12° notches are narrower than the 10 mm roller, so it settles only about half a millimetre
-  // into each (see the report); it is lowest at every detent and on the full radius between them.
-  const at = (d: number) => radial[Math.round(d / 2.5)];
   const full = DIM.starWheel.radius + rr;
-  for (const d of [0, 60, 120, 180, 240, 300]) expect(at(d), `seated at ${d}°`).toBeLessThan(full - 0.0004);
-  expect(at(30)).toBeLessThan(full - 0.0001);    // the shallower neutral notch
-  expect(at(30)).toBeGreaterThan(at(60));
-  for (const d of [15, 45, 90, 150, 210, 270]) expect(at(d), `between at ${d}°`).toBeCloseTo(full, 9);
+  for (const d of [0, 60, 120, 180, 240, 300]) {
+    expect(radial.get(d)!, `seated at ${d}°`).toBeCloseTo(full - 0.003, 6);                  // on the seat's floor
+    const between = d === 0 ? 15 : d === 60 ? 90 : d - 30;                                     // midway to a neighbour
+    expect(Math.abs(wrapPi(arm.get(d)! - arm.get(between)!)), `arm swing ${d}° to ${between}°`).toBeGreaterThan(deg(3));
+  }
+  // the shallower neutral seat: the arm's arc meets the ray only at lobe and gear-seat depth, so here
+  // the roller sits a few micrometres off the ray and as much above the floor
+  expect(radial.get(30)!).toBeCloseTo(full - 0.0015, 4);
+  expect(radial.get(30)!).toBeGreaterThan(radial.get(60)! + 0.001);
+  for (const d of [15, 45, 90, 150, 210, 270]) expect(radial.get(d)!, `between at ${d}°`).toBeCloseTo(full, 9);
+});
+
+test('forward drive runs forward: wheel top toward -z, top chain run toward the front sprocket', () => {
+  const sim = inGear(3, 6000); run(sim, inp({ throttle: 0.5 }), 0.1);
+  const s1 = sim.getState(); expect(s1.outputShaftOmega).toBeGreaterThan(0);
+  pose(s1);
+  const wheel = body('rearWheel');
+  const top = new THREE.Vector3(0, a.node('rearWheel').position.y + DIM.wheel.radius, a.node('rearWheel').position.z);
+  top.x = a.node('rearWheel').position.x;
+  const local = top.clone().applyMatrix4(new THREE.Matrix4().copy(wheel.matrixWorld).invert());
+  // a link on the top run, halfway between the sprockets
+  const m = new THREE.Matrix4(); const chain = a.node('chain');
+  const links = (): THREE.Vector3[] => Array.from({ length: a.rig.chain.count }, (_, i) => {
+    (i % 2 === 0 ? a.chain.inner : a.chain.outer).getMatrixAt(i >> 1, m);
+    return new THREE.Vector3().applyMatrix4(m).applyMatrix4(chain.matrixWorld);
+  });
+  const front = a.node('sprocket').position, rear = a.node('rearSprocket').position;
+  const before = links();
+  const i = before.findIndex((p) => p.y > front.y + FRONT_PITCH_RADIUS - 1e-3 && Math.abs(p.z - (front.z + rear.z) / 2) < 0.02);
+  expect(i).toBeGreaterThanOrEqual(0);
+  for (let k = 0; k < 10; k++) sim.step(inp({ throttle: 0.5 }));
+  pose(sim.getState());
+  expect(local.clone().applyMatrix4(body('rearWheel').matrixWorld).z, 'wheel top moves forward').toBeLessThan(top.z - 1e-6);
+  expect(rear.z).toBeGreaterThan(front.z);                     // the rear sprocket is behind (+z)
+  expect(links()[i].z, 'top run moves toward the front sprocket').toBeLessThan(before[i].z - 1e-6);
 });
 
 test('clutch plates part as capacity falls; springs end on the hub seats', () => {
@@ -214,11 +243,15 @@ test('clutch plates part as capacity falls; springs end on the hub seats', () =>
 
 test('pedal and shift shaft rock ±12° with pedal travel; a state without travel rests', () => {
   const s = createSimulation().getState();
+  // the lever points forward (-z); lifting its tip turns it toward +y, a positive angle about x
   (s.pedal as { travel?: number }).travel = 1; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(-PEDAL_SWING, 12);
-  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(-PEDAL_SWING, 12);
+  expect(relAngle(a.node('pedal'))).toBeCloseTo(PEDAL_SWING, 12);
+  expect(relAngle(a.node('shiftShaft'))).toBeCloseTo(PEDAL_SWING, 12);
+  const tip = toWorld(body('pedal'), 0, DIM.pedal.length, 0);
+  (s.pedal as { travel?: number }).travel = 0; pose(s);
+  expect(tip.y).toBeGreaterThan(toWorld(body('pedal'), 0, DIM.pedal.length, 0).y);
   (s.pedal as { travel?: number }).travel = -0.5; pose(s);
-  expect(relAngle(a.node('pedal'))).toBeCloseTo(0.5 * PEDAL_SWING, 12);
+  expect(relAngle(a.node('pedal'))).toBeCloseTo(-0.5 * PEDAL_SWING, 12);
   delete (s.pedal as { travel?: number }).travel; pose(s);
   expect(relAngle(a.node('pedal'))).toBeCloseTo(0, 12);
   expect(PEDAL_SWING).toBeCloseTo(deg(12), 12);

@@ -6,11 +6,11 @@ import type { Assembly } from '../../src/view3d/assembly';
 import { poseAssembly } from '../../src/view3d/pose';
 import { partMaterial, setTorque, withEdges } from '../../src/view3d/materials';
 import {
-  CLAW_OUTER, CLUTCH_X0, COLLAR_CLEARANCE, COLLAR_RADIUS, CRANK, CRANK_AXIS, DRUM_AXIS, DRUM_LENGTH, FORK_GROOVE_WIDTH,
-  FORK_RODS, INPUT_AXIS, OUTPUT_AXIS, OUTPUT_SHAFT_X, REAR_AXIS, SPROCKET_X, distanceOf, tipRadius,
+  CLAW_OUTER, CLUTCH_X0, COLLAR_GROOVE_WIDTH, COLLAR_RADIUS, CRANK, CRANK_AXIS, DRUM_AXIS, DRUM_LENGTH,
+  FORK_RODS, INPUT_AXIS, OUTPUT_AXIS, OUTPUT_SHAFT_X, REAR_AXIS, SLIDER_AXIS, SPROCKET_X, distanceOf, gearSolids, tipRadius, toothedRange,
 } from '../../src/view3d/layout3d';
 import type { Axis } from '../../src/view3d/layout3d';
-import { CENTRE_DISTANCE, FACE_WIDTH, GEAR_ORDER, sliderOfGear } from '../../src/model/geometry';
+import { CENTRE_DISTANCE, GEAR_ORDER } from '../../src/model/geometry';
 import { PARTS } from '../../src/model/parts';
 import type { GearNo, PartId } from '../../src/model/parts';
 import { createSimulation } from '../../src/sim/simulation';
@@ -59,11 +59,12 @@ test('node throws for an unknown part, and every mesh in the tree is pickable', 
 test('layout: the plan placement holds', () => {
   const dir = (from: Axis, to: Axis) => Math.atan2(to.y - from.y, to.z - from.z) * 180 / Math.PI; // from horizontal (+z) toward +y
   expect(distanceOf(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(CENTRE_DISTANCE, 12);
-  expect(dir(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(-145, 9);          // 35° below horizontal toward -z
+  // the bike's front is -z: the output shaft is behind (+z) the input, the crank ahead (-z) of the clutch
+  expect(dir(INPUT_AXIS, OUTPUT_AXIS)).toBeCloseTo(-35, 9);           // 35° below horizontal toward +z
   expect(distanceOf(CRANK_AXIS, INPUT_AXIS)).toBeCloseTo((36 + 76) * 0.0025 / 2, 12);
-  expect(dir(INPUT_AXIS, CRANK_AXIS)).toBeCloseTo(50, 9);              // 50° above horizontal toward +z
-  expect(DRUM_AXIS.y).toBeLessThan(OUTPUT_AXIS.y); expect(DRUM_AXIS.z).toBeGreaterThan(INPUT_AXIS.z); // below and in front
-  expect(REAR_AXIS.y).toBe(OUTPUT_AXIS.y); expect(OUTPUT_AXIS.z - REAR_AXIS.z).toBeCloseTo(0.56, 12);
+  expect(dir(INPUT_AXIS, CRANK_AXIS)).toBeCloseTo(130, 9);             // 50° above horizontal toward -z
+  expect(DRUM_AXIS.y).toBeLessThan(OUTPUT_AXIS.y); expect(DRUM_AXIS.z).toBeLessThan(INPUT_AXIS.z); // below and in front
+  expect(REAR_AXIS.y).toBe(OUTPUT_AXIS.y); expect(REAR_AXIS.z - OUTPUT_AXIS.z).toBeCloseTo(0.56, 12); // behind
   a.root.updateMatrixWorld(true);
   const wheel = a.node('rearWheel').getWorldPosition(new THREE.Vector3());
   expect(wheel.y).toBeCloseTo(REAR_AXIS.y, 12); expect(wheel.z).toBeCloseTo(REAR_AXIS.z, 12);
@@ -124,38 +125,62 @@ function gearCylinders(): Cylinder[] {
     const id = `gear${g}${shaft === 'input' ? 'in' : 'out'}` as PartId;
     const p = a.node(id).getWorldPosition(new THREE.Vector3());
     const axis = { y: p.y, z: p.z };
-    out.push({ id, axis, x0: p.x - FACE_WIDTH / 2, x1: p.x + FACE_WIDTH / 2, r: tipRadius(shaft, g as GearNo) });
-    // dog lugs stand off both faces at most
-    out.push({ id, axis, x0: p.x - FACE_WIDTH / 2 - DIM.dogHeight, x1: p.x + FACE_WIDTH / 2 + DIM.dogHeight, r: DIM.dogOuterRadius });
+    // the toothed band, and a collared slider's groove hub and flange
+    for (const b of gearSolids(shaft, g as GearNo)) out.push({ id, axis, x0: p.x + b.x0, x1: p.x + b.x1, r: b.r });
+    // the dog rings this gear actually carries, where they stand
+    const dogGeometry = meshesOf(a.rig.freeDogs[0].ring)[0].geometry;
+    for (const m of meshesOf(a.node(id)).filter((mesh) => mesh.geometry === dogGeometry)) {
+      const box = new THREE.Box3().setFromObject(m);
+      out.push({ id, axis, x0: box.min.x, x1: box.max.x, r: DIM.dogOuterRadius });
+    }
   }
   return out;
 }
+const TRAVEL_ENDS: number[] = [-1, 0, 1];
+const poseSlidersAt = (x: number): void => {
+  const s = createSimulation().getState();
+  for (const k of ['A', 'B', 'C'] as SliderId[]) s.sliders[k].x = x;
+  poseAssembly(a, s, EMPTY);
+};
 
-test('forks clear every gear but their own groove, at both ends of their travel', () => {
-  for (const x of [-1, 0, 1]) {
-    const s = createSimulation().getState();
-    for (const k of ['A', 'B', 'C'] as SliderId[]) s.sliders[k].x = x;
-    poseAssembly(a, s, EMPTY);
+test('forks clear every gear solid, their own included, at both ends of their travel', () => {
+  for (const x of TRAVEL_ENDS) {
+    poseSlidersAt(x);
     const cylinders = gearCylinders();
     for (const k of ['A', 'B', 'C'] as SliderId[]) {
-      const fork = a.node(`fork${k}` as PartId);
-      const own = cylinders.filter((c) => sliderOfGear(c.id.endsWith('in') ? 'input' : 'output', Number(c.id[4]) as GearNo) === k);
-      const groove = fork.getWorldPosition(new THREE.Vector3()).x;
       let bad = 0;
-      for (const mesh of meshesOf(fork)) for (const v of worldVertices(mesh)) {
+      for (const mesh of meshesOf(a.node(`fork${k}` as PartId))) for (const v of worldVertices(mesh)) {
         for (const c of cylinders) {
           if (v.x <= c.x0 + 1e-9 || v.x >= c.x1 - 1e-9) continue;
-          const r = Math.hypot(v.y - c.axis.y, v.z - c.axis.z);
-          if (r >= c.r) continue;
-          // allowed: inside its own slider gear's groove, above the groove floor
-          const inGroove = own.includes(c) && Math.abs(v.x - groove) <= FORK_GROOVE_WIDTH / 2 + 1e-9
-            && r >= COLLAR_RADIUS[k] - COLLAR_CLEARANCE;
-          if (!inGroove) bad++;
+          if (Math.hypot(v.y - c.axis.y, v.z - c.axis.z) < c.r - 1e-9) bad++;
         }
       }
       expect(bad, `fork ${k} at x ${x}`).toBe(0);
     }
   }
+});
+
+test('no fork claw volume intersects any gear\'s toothed region', () => {
+  for (const x of TRAVEL_ENDS) {
+    poseSlidersAt(x); a.root.updateMatrixWorld(true);
+    for (const k of ['A', 'B', 'C'] as SliderId[]) {
+      const fx = a.node(`fork${k}` as PartId).getWorldPosition(new THREE.Vector3()).x;
+      const claw = { x0: fx - DIM.fork.thickness / 2, x1: fx + DIM.fork.thickness / 2, rIn: COLLAR_RADIUS[k], rOut: CLAW_OUTER(k) };
+      for (const shaft of ['input', 'output'] as const) for (const g of GEAR_ORDER) {
+        const id = `gear${g}${shaft === 'input' ? 'in' : 'out'}` as PartId;
+        const p = a.node(id).getWorldPosition(new THREE.Vector3());
+        const [t0, t1] = toothedRange(shaft, g as GearNo);
+        const overlap = Math.min(claw.x1, p.x + t1) - Math.max(claw.x0, p.x + t0);
+        if (overlap <= 0) continue;
+        // an x overlap is allowed only with a gear on the other shaft whose tips the claw stays below
+        const sameAxis = Math.hypot(p.y - SLIDER_AXIS[k].y, p.z - SLIDER_AXIS[k].z) < 1e-9;
+        expect(sameAxis, `claw ${k} at x ${x} is level with the teeth of ${id}`).toBe(false);
+        expect(claw.rOut, `claw ${k} reaches the tips of ${id}`).toBeLessThan(CENTRE_DISTANCE - tipRadius(shaft, g as GearNo));
+      }
+    }
+  }
+  // the claws of A and B ride in their collar grooves with 0.2 mm clear of each wall
+  expect(COLLAR_GROOVE_WIDTH - DIM.fork.thickness).toBeGreaterThanOrEqual(0.0004 - 1e-12);
 });
 
 test('the forks claws stay below the tips of the gears meshing beside them', () => {

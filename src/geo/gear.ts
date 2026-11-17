@@ -139,19 +139,31 @@ export function dogRing(o: { count: number; widthDeg: number; innerRadius: numbe
 }
 
 /**
- * A sliding gear with a shift-fork groove: over the middle `grooveWidth` of the face the teeth are
- * cut away down to `grooveRadius`, leaving two tooth bands joined by the hub. A fork claw riding in
- * the groove stays below the reach of the meshing gear's tips.
+ * A sliding gear with a fork collar beside its teeth. Along x (u = collarSide × x), the teeth take
+ * the first `toothWidth` of the face from u = -faceWidth/2; then comes the collar: a groove
+ * `grooveWidth` wide down to `grooveRadius`, walled by the teeth on one side and by a plain flange of
+ * `flangeRadius` that runs to the face's other end. A fork claw riding in the groove never passes
+ * through teeth.
  */
-export function forkGroovedGear(o: {
-  teeth: number; module: number; faceWidth: number; boreRadius: number; grooveWidth: number; grooveRadius: number;
+export function collaredGear(o: {
+  teeth: number; module: number; faceWidth: number; boreRadius: number; toothWidth: number;
+  grooveWidth: number; grooveRadius: number; flangeRadius: number; collarSide: 1 | -1;
 }): BufferGeometry {
   const rootRadius = (o.teeth * o.module) / 2 - DIM.dedendum * o.module;
   if (!(o.grooveRadius > o.boreRadius && o.grooveRadius < rootRadius)) throw new Error('groove radius must lie between the bore and the root');
-  if (!(o.grooveWidth > 0 && o.grooveWidth < o.faceWidth)) throw new Error('groove must be narrower than the face');
+  if (!(o.flangeRadius > o.grooveRadius && o.flangeRadius < rootRadius)) throw new Error('flange must stand above the groove and below the root');
+  const flangeWidth = o.faceWidth - o.toothWidth - o.grooveWidth;
+  if (!(o.toothWidth > 0 && o.grooveWidth > 0 && flangeWidth > 0)) throw new Error('teeth, groove and flange must all fit on the face');
   const bore = circle(o.boreRadius, segmentsFor(o.boreRadius, BORE_CHORD, 24));
-  const profile = gearProfile(o.teeth, o.module);
-  const h = o.faceWidth / 2, g = o.grooveWidth / 2;
-  const hub = prism(circle(o.grooveRadius, segmentsFor(o.grooveRadius, BORE_CHORD, 24)), [bore], -g, g);
-  return toGeometry([prism(profile, [bore], -h, -g), hub, prism(profile, [bore], g, h)]);
+  const ring = (r: number) => circle(r, segmentsFor(r, BORE_CHORD, 24));
+  const h = o.faceWidth / 2, u1 = -h + o.toothWidth, u2 = u1 + o.grooveWidth;
+  const span = (a: number, b: number): [number, number] => {
+    const x = [o.collarSide * a, o.collarSide * b];
+    return [Math.min(...x), Math.max(...x)];
+  };
+  return toGeometry([
+    prism(gearProfile(o.teeth, o.module), [bore], ...span(-h, u1)),
+    prism(ring(o.grooveRadius), [bore], ...span(u1, u2)),
+    prism(ring(o.flangeRadius), [bore], ...span(u2, h)),
+  ]);
 }

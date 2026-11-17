@@ -11,7 +11,7 @@ import { DIM } from '../geo/dimensions';
 import { plateStackOffsets, springLength } from '../geo/clutch';
 import { DETENT_ARM, starWheelRadiusAt } from '../geo/shift';
 import { setTorque } from './materials';
-import { DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, FORK_X, PEDAL_SWING, clutchX, directionOf, distanceOf } from './layout3d';
+import { DETENT_ARM_REST, DETENT_CONTACT, DETENT_PIVOT, DRUM_AXIS, DRUM_REFERENCE, FORK_X, PEDAL_SWING, clutchX, directionOf, distanceOf } from './layout3d';
 import type { Assembly } from './assembly';
 
 const PART_IDS = Object.keys(PARTS) as PartId[];
@@ -33,7 +33,7 @@ const linkMatrix = new Matrix4();
 export function rollerRestDistance(theta: number): number {
   const rr = DETENT_ARM.rollerRadius;
   const reach = Math.asin(rr / (DIM.starWheel.radius - 0.003)); // the deepest notch is 3 mm
-  const n = 96;
+  const n = 720; // fine enough to find the sharp edge where a seat meets the rim
   let best = 0;
   for (let i = 0; i <= n; i++) {
     const d = -reach + (2 * reach * i) / n;
@@ -55,7 +55,10 @@ export function detentArmAngle(drumAngle: number): number {
   let contact = DETENT_CONTACT, beta = 0;
   for (let k = 0; k < 4; k++) { // the roller swings on an arc: settle where it touches
     const rho = rollerRestDistance(drumAngle + (contact - DETENT_CONTACT));
-    beta = toDrum + Math.acos(clamp((L * L + dv * dv - rho * rho) / (2 * L * dv), -1, 1));
+    const swing = Math.acos(clamp((L * L + dv * dv - rho * rho) / (2 * L * dv), -1, 1));
+    // of the two arm angles that reach that distance, the one on the arm's side of the pivot
+    beta = [toDrum + swing, toDrum - swing].reduce((best, b) =>
+      (Math.abs(wrapPi(b - DETENT_ARM_REST)) < Math.abs(wrapPi(best - DETENT_ARM_REST)) ? b : best));
     const c = { y: DETENT_PIVOT.y + L * Math.cos(beta), z: DETENT_PIVOT.z + L * Math.sin(beta) };
     contact = directionOf(DRUM_AXIS, c);
   }
@@ -101,13 +104,14 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
   spin('shiftDrum', DRUM_REFERENCE - state.drum.angle);
   spin('starWheel', DETENT_CONTACT - state.drum.angle);
   spin('detentArm', detentArmAngle(state.drum.angle));
-  // pedal travel (-1 down .. +1 up) turns the shift shaft and lifts the pedal's tip
+  // pedal travel (-1 down .. +1 up) turns the shift shaft and lifts the pedal's forward-pointing tip
   const travel = clamp((state.pedal as { travel?: number }).travel ?? 0, -1, 1);
-  spin('shiftShaft', -travel * PEDAL_SWING); spin('pedal', -travel * PEDAL_SWING);
+  spin('shiftShaft', travel * PEDAL_SWING); spin('pedal', travel * PEDAL_SWING);
 
-  // chain: one link per tooth of front sprocket travel, each link along the chord to the next roller
+  // chain: one link per tooth of front sprocket travel, each link along the chord to the next roller.
+  // Under drive the drawn output angle falls and the chain runs on in s (rear to front on top).
   const { path: loop, count, spacing, travelPerRadian } = rig.chain;
-  const offset = ang.output * travelPerRadian;
+  const offset = -ang.output * travelPerRadian;
   for (let i = 0; i < count; i++) {
     const p = loop.pointAt(i * spacing + offset), q = loop.pointAt((i + 1) * spacing + offset);
     linkMatrix.makeRotationX(Math.atan2(q.z - p.z, q.y - p.y)).setPosition(0, p.y, p.z);

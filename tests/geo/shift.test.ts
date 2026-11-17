@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 import { SLIDER_TRAVEL } from '../../src/model/geometry';
 import { deg } from '../../src/sim/units';
 import {
-  FORK_PIN_REACH, detentArm, grooveAxialOffset, pedalLever, shiftDrum, shiftFork, shiftPawl, starWheel, starWheelRadiusAt,
+  DETENT_ARM, FORK_PIN_REACH, STAR_SEAT_RADIUS, detentArm, grooveAxialOffset, pedalLever, shiftDrum, shiftFork, shiftPawl, starWheel, starWheelRadiusAt,
 } from '../../src/geo/shift';
 import { expectCleanSolid } from './helpers';
 
@@ -45,11 +45,28 @@ test('every groove-floor vertex lies in its groove at the commanded offset', () 
   expect(g.boundingBox!.max.x - g.boundingBox!.min.x).toBeCloseTo(0.12, 7);
 });
 
-test('star wheel notches: smooth, every gear one, nothing past sixth', () => {
+test('star wheel notches: a roller seat at every detent, a plateau between, nothing past sixth', () => {
   for (const d of [0, 60, 120, 180, 240, 300]) expect(starWheelRadiusAt(deg(d)), `${d}°`).toBeCloseTo(0.017, 9);
-  for (const d of [6, 54, 66, 330]) expect(starWheelRadiusAt(deg(d)), `${d}°`).toBeCloseTo(0.020, 9);
+  // a zero-depth plateau between every pair of neighbouring detents, and beyond sixth
+  for (const d of [15, 45, 90, 150, 210, 270, 330]) expect(starWheelRadiusAt(deg(d)), `${d}°`).toBeCloseTo(0.020, 9);
   expect(starWheelRadiusAt(deg(3))).toBeGreaterThan(0.017); expect(starWheelRadiusAt(deg(3))).toBeLessThan(0.020);
   expect(starWheelRadiusAt(deg(360))).toBeCloseTo(starWheelRadiusAt(0), 12);
+});
+
+test('each notch is a circular seat a little larger than the detent roller', () => {
+  expect(STAR_SEAT_RADIUS).toBeGreaterThan(DETENT_ARM.rollerRadius);
+  expect(STAR_SEAT_RADIUS - DETENT_ARM.rollerRadius).toBeLessThan(0.0003);
+  for (const [d, depth] of [[120, 0.003], [30, 0.0015]] as const) {
+    const a = deg(d), c = 0.020 - depth + STAR_SEAT_RADIUS; // seat centre on the detent's ray
+    let inSeat = 0;
+    for (let k = -149; k <= 149; k++) { // within 15° of the detent: no neighbour's seat
+      const t = a + deg(k * 0.1), r = starWheelRadiusAt(t);
+      if (r > 0.020 - 1e-12) continue;
+      inSeat++;
+      expect(Math.hypot(r * Math.cos(t) - c * Math.cos(a), r * Math.sin(t) - c * Math.sin(a)), `${d}° + ${k / 10}°`).toBeCloseTo(STAR_SEAT_RADIUS, 9);
+    }
+    expect(inSeat, `${d}°: the seat spans many degrees, wide enough for the roller`).toBeGreaterThan(depth > 0.002 ? 200 : 150);
+  }
 });
 
 test('the fork reaches its collar and its pin points the other way', () => {

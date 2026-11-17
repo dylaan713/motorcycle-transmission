@@ -1,31 +1,41 @@
 import { test, expect } from 'vitest';
-import { forkGroovedGear } from '../../src/geo/gear';
+import { collaredGear } from '../../src/geo/gear';
 import { crankshaft, sleeve } from '../../src/geo/shaft';
 import { FORK_CLAW_DEPTH, grooveAxialOffset, shiftDrum } from '../../src/geo/shift';
 import { MODULE } from '../../src/model/geometry';
 import { deg } from '../../src/sim/units';
 import { expectCleanSolid, radii } from './helpers';
 
-// Small generators added for the 3D assembly (Task 4): the fork-grooved sliding gear, the
+// Small generators added for the 3D assembly (Task 4): the collared sliding gear, the
 // collar between the third and fourth gears, the crankshaft, and drum grooves cut for followers
 // that sit at different angles round the drum.
 
-test('a fork-grooved gear keeps its teeth either side of a groove cut to the groove radius', () => {
-  const g = forkGroovedGear({ teeth: 27, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, grooveWidth: 0.006, grooveRadius: 0.023 });
-  const p = g.getAttribute('position');
-  const tip = 27 * MODULE / 2 + MODULE;
-  let inGroove = 0, toothTip = 0;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), r = Math.hypot(p.getY(i), p.getZ(i));
-    if (Math.abs(x) < 0.003 - 1e-7) { inGroove++; expect(r).toBeLessThan(0.023 + 1e-7); }
-    if (r > tip - 1e-7) toothTip++;
+const COLLARED = { teeth: 27, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, toothWidth: 0.007,
+  grooveWidth: 0.0054, grooveRadius: 0.023, flangeRadius: 0.027 } as const;
+
+test('a collared gear: teeth on one part of the face, a grooved collar on the rest', () => {
+  for (const side of [1, -1] as const) {
+    const g = collaredGear({ ...COLLARED, collarSide: side });
+    const p = g.getAttribute('position');
+    const tip = (27 * MODULE) / 2 + MODULE;
+    const toothEnd = 0;                               // teeth over u in [-7, 0] mm, u = side × x
+    const grooveEnd = toothEnd + 0.0054;
+    let teethTips = 0;
+    for (let i = 0; i < p.count; i++) {
+      const u = side * p.getX(i), r = Math.hypot(p.getY(i), p.getZ(i));
+      if (r > 0.027 + 1e-7) { expect(u, `side ${side}: teeth only on the toothed width`).toBeLessThan(toothEnd + 1e-7); }
+      if (r > tip - 1e-7) teethTips++;
+      if (u > toothEnd + 1e-7 && u < grooveEnd - 1e-7) expect(r).toBeLessThan(0.023 + 1e-7); // no vertex inside the groove
+      if (u > grooveEnd + 1e-7) expect(r, 'flange').toBeLessThan(0.027 + 1e-7);
+    }
+    expect(teethTips).toBeGreaterThan(27);
+    g.computeBoundingBox();
+    expect(g.boundingBox!.max.x - g.boundingBox!.min.x).toBeCloseTo(0.014, 7);
+    expect(Math.min(...radii(g))).toBeCloseTo(0.0125, 6);
   }
-  expect(inGroove).toBe(0); // the groove's only vertices are on its walls, at |x| = 3 mm
-  expect(toothTip).toBeGreaterThan(27);
-  g.computeBoundingBox();
-  expect(g.boundingBox!.max.x - g.boundingBox!.min.x).toBeCloseTo(0.014, 7);
-  expect(Math.min(...radii(g))).toBeCloseTo(0.0125, 6);
-  expect(() => forkGroovedGear({ teeth: 27, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, grooveWidth: 0.006, grooveRadius: 0.031 })).toThrow();
+  expect(() => collaredGear({ ...COLLARED, collarSide: 1, grooveRadius: 0.031 })).toThrow();
+  expect(() => collaredGear({ ...COLLARED, collarSide: 1, grooveWidth: 0.008 })).toThrow(); // no room for a flange
+  expect(() => collaredGear({ ...COLLARED, collarSide: 1, flangeRadius: 0.02 })).toThrow();  // flange below the groove
 });
 
 test('a sleeve and a crankshaft have their sizes', () => {
@@ -72,7 +82,7 @@ test('the claw depth is exported for placing forks', () => {
 });
 
 test('every generator in this file builds a clean closed solid', () => {
-  expectCleanSolid(forkGroovedGear({ teeth: 26, module: MODULE, faceWidth: 0.014, boreRadius: 0.0125, grooveWidth: 0.006, grooveRadius: 0.023 }), 'grooved gear');
+  for (const side of [1, -1] as const) expectCleanSolid(collaredGear({ ...COLLARED, teeth: 26, collarSide: side }), `collared gear ${side}`);
   expectCleanSolid(sleeve({ boreRadius: 0.011, radius: 0.014, length: 0.007 }), 'sleeve');
   expectCleanSolid(crankshaft({ journalRadius: 0.018, x0: -0.1, x1: 0.07, throws: [{ x: -0.048, angle: 0 }, { x: -0.016, angle: Math.PI }],
     throwRadius: 0.0225, pinRadius: 0.016, pinLength: 0.016, webThickness: 0.007, webRadius: 0.034 }), 'crankshaft');
