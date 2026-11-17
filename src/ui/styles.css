@@ -30,11 +30,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { background: var(--ground); }
+/* the app fills the dynamic viewport and the page itself never scrolls: only the panel does */
+html { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--ground); }
 
 body {
   margin: 0;
-  min-height: 100dvh;
+  height: 100%;
   background: var(--ground);
   color: var(--ink);
   font-family: var(--font-text);
@@ -178,7 +179,8 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   border-top: 1px solid var(--steel-1);
 }
 #panel {
-  grid-area: panel; min-height: 0; overflow-y: auto;
+  grid-area: panel; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  position: relative; /* contains the absolutely placed screen-reader text inside it */
   padding: var(--gutter);
   background: var(--surface);
   border-left: 1px solid var(--steel-1);
@@ -193,20 +195,13 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
 /* ---- below 900px: one column ---- */
 @media (max-width: 899.98px) {
   :root { --gutter: 16px; }
-  .app { height: auto; min-height: 100dvh; }
-  .app-header { position: sticky; top: 0; z-index: 2; }
   .app-header h1 { font-size: var(--t-md); }
   .header-slots { gap: var(--s3); }
-  .app-main { display: flex; flex-direction: column; height: calc(100dvh - var(--header-h)); }
-  #stage { flex: 0 0 46dvh; padding: var(--gutter); }
-  #panel {
-    flex: 1 1 auto; border-left: 0; border-top: 1px solid var(--steel-1);
-    padding-bottom: calc(var(--deck-h) + var(--gutter));
-  }
-  #deck {
-    position: fixed; left: 0; right: 0; bottom: 0; height: var(--deck-h); z-index: 3;
-    padding: var(--s3) var(--gutter);
-  }
+  /* stage, panel and deck share the height under the header; the deck stays in thumb reach */
+  .app-main { display: flex; flex-direction: column; }
+  #stage { flex: 0 0 46%; padding: var(--gutter); }
+  #panel { flex: 1 1 0; border-left: 0; border-top: 1px solid var(--steel-1); }
+  #deck { flex: 0 0 var(--deck-h); padding: var(--s3) var(--gutter); }
 }
 
 @media (max-width: 899.98px) {

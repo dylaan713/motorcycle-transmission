@@ -6,6 +6,7 @@ import { CAMERA_KEYS, createControls, KEYMAP } from './app/controls';
 import { createDriver } from './app/driver';
 import { describeTarget, shouldHandleCameraKey, shouldHandleKey } from './app/keys';
 import { createLoop, startAnimation } from './app/loop';
+import { holdForReducedMotion } from './app/motion';
 import { mountDeck } from './ui/deck';
 import { createSimulation } from './sim/simulation';
 import { torquePath } from './model/torquePath';
@@ -103,7 +104,10 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
   deck.sync(state, loop.lastInputs);
   host.render(state, torquePath(state));
   callouts?.sync();
+  hold.frame();
 });
+// under reduced motion the idling engine is held still after the first frame until someone rides
+const hold = holdForReducedMotion(loop, driver, reducedMotion);
 
 // hover highlights a part, a click (not a drag) selects it
 const DRAG_PX = 5;

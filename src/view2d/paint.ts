@@ -1,5 +1,5 @@
 import type { PartId } from '../model/parts';
-import { COLORS } from '../ui/tokens';
+import { COLORS } from '../tokens';
 import { TWO_PI } from './layout';
 
 export const LABEL_PX = 11;
@@ -32,9 +32,13 @@ export class Painter {
   Y(y: number): number { return this.oy + y * this.scale; }
   L(d: number): number { return d * this.scale; }
   snap(v: number): number { return Math.round(v * this.dpr) / this.dpr; }
-  /** Centre of a 1 CSS px line, on device pixels. */
+  /** Device pixels in a hairline: the whole number nearest one CSS px, at least one. */
+  private get hairDevice(): number { return Math.max(1, Math.round(this.dpr)); }
+  /** Width of a hairline in CSS px; a line this wide, centred by line1, covers whole device pixels. */
+  get hair(): number { return this.hairDevice / this.dpr; }
+  /** Centre of a hairline near v, placed so the line covers whole device pixel rows. */
   line1(v: number): number {
-    const o = (this.dpr % 2) / 2;
+    const o = (this.hairDevice % 2) / 2;
     return (Math.round(v * this.dpr - o) + o) / this.dpr;
   }
 

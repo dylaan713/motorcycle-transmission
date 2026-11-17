@@ -1,5 +1,5 @@
 import { PARAMS } from '../sim/params';
-import { finalRatio, gearAngle as simGearAngle, primaryRatio } from '../sim/kinematics';
+import { finalRatio, freeShaftOf, gearAngle as simGearAngle, primaryRatio } from '../sim/kinematics';
 import { dogPhase as simDogPhase } from '../sim/dogs';
 import { wrap } from '../sim/units';
 import type { SimState, SliderId } from '../sim/types';
@@ -25,11 +25,8 @@ const SLIDING: Record<Shaft, Partial<Record<GearNo, SliderId>>> = {
   input: { 3: 'C', 4: 'C' },
   output: { 5: 'A', 6: 'B' },
 };
-// Gears 1 to 4 spin free on the output shaft, 5 and 6 on the input shaft.
-const isFree = (shaft: Shaft, g: GearNo): boolean => (shaft === 'output' ? g <= 4 : g >= 5);
-
 export const gearKind = (shaft: Shaft, g: GearNo): GearKind =>
-  SLIDING[shaft][g] !== undefined ? 'slider' : isFree(shaft, g) ? 'free' : 'fixed';
+  SLIDING[shaft][g] !== undefined ? 'slider' : freeShaftOf(g) === shaft ? 'free' : 'fixed';
 
 export const sliderOfGear = (shaft: Shaft, g: GearNo): SliderId | null => SLIDING[shaft][g] ?? null;
 

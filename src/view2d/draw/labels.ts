@@ -1,7 +1,7 @@
 import { GEAR_ORDER, gearAxialPosition } from '../../model/geometry';
 import type { SimState } from '../../sim/types';
 import { toDeg } from '../../sim/units';
-import { COLORS } from '../../ui/tokens';
+import { COLORS } from '../../tokens';
 import {
   BAND, BASKET_BACK_X, BASKET_MOUTH_X, BASKET_R, CRANK, CRANK_Y, CURSOR_Y, GEAR_LABEL_Y, IN_SHAFT_X, IN_Y, INSET, MM,
   OUT_SHAFT_X, OUT_Y, SLIDERS,

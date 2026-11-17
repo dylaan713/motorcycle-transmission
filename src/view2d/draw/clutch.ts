@@ -1,5 +1,5 @@
 import { PARAMS } from '../../sim/params';
-import { COLORS } from '../../ui/tokens';
+import { COLORS } from '../../tokens';
 import {
   BASKET_BACK_X, BASKET_BORE, BEARING_GAP, CRANK, I_BASKET_BACK, I_BASKET_RIM, I_DRIVEN, SHAFT_R, CRANK_Y, DRIVE_R, DRIVEN_R, HUB_R, HUB_X,
   I_HUB_DRUM, I_PLATE0, I_PRESSURE, I_ROD, IN_Y, PLATE_COUNT, PRIMARY_X, SIGNS, SPRING, type PartShape,

@@ -2,7 +2,7 @@ import { SLIDER_TRAVEL } from '../../model/geometry';
 import { grooveCommand } from '../../sim/shiftDrum';
 import type { SimState } from '../../sim/types';
 import { deg } from '../../sim/units';
-import { COLORS } from '../../ui/tokens';
+import { COLORS } from '../../tokens';
 import {
   ARM_PIVOT, BAND, CURSOR_Y, DETENT_ANGLES, DETENT_LABELS, DETENT_NAMES, DRUM_R, GROOVE_W, MM, PAWL, PEDAL, ROLLER_R,
   SHIFT_SHAFT, SLIDERS, STAR, TRACK_RANGE, TWO_PI, pawlAngle, pedalTip, starRadius,
@@ -21,7 +21,7 @@ export function drawDrum(p: Painter, state: SimState): void {
   ctx.save();
   ctx.beginPath(); ctx.rect(bx0 + 1, by0 + 1, bx1 - bx0 - 2, by1 - by0 - 2); ctx.clip();
   // detent rows
-  ctx.strokeStyle = COLORS.steel2; ctx.lineWidth = 1;
+  ctx.strokeStyle = COLORS.steel2; ctx.lineWidth = p.hair;
   ctx.beginPath();
   for (const a of DETENT_ANGLES) {
     const y = p.line1(p.Y(rowY(a, cur)));
@@ -46,7 +46,7 @@ export function drawDrum(p: Painter, state: SimState): void {
   ctx.restore();
   // cursor at the current angle, with end marks outside the band
   const cy = p.line1(p.Y(CURSOR_Y));
-  ctx.strokeStyle = COLORS.ink; ctx.lineWidth = 1;
+  ctx.strokeStyle = COLORS.ink; ctx.lineWidth = p.hair;
   ctx.beginPath(); ctx.moveTo(bx0 - 4, cy); ctx.lineTo(bx1 + 4, cy); ctx.stroke();
   ctx.fillStyle = COLORS.ink;
   ctx.beginPath(); ctx.moveTo(bx0 - 4, cy - 4); ctx.lineTo(bx0, cy); ctx.lineTo(bx0 - 4, cy + 4); ctx.fill();
@@ -76,7 +76,6 @@ export function drawStar(p: Painter, state: SimState): void {
   }
   ctx.closePath();
   ctx.fillStyle = COLORS.steel2; ctx.fill();
-  p.hotPath('starWheel');
   ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.stroke();
   p.fillCircle(null, STAR.x, STAR.y, 3 * MM, COLORS.steel3);
   // the detent arm's roller rides the profile where it faces the cursor
@@ -96,14 +95,12 @@ export function drawShiftMechanism(p: Painter, state: SimState): void {
   ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(p.X(ss.x), p.Y(ss.y)); ctx.lineTo(p.X(tip.x), p.Y(tip.y));
   ctx.strokeStyle = COLORS.steel3; ctx.lineWidth = Math.max(3, p.L(PEDAL.w)); ctx.stroke();
-  p.hotPath('pedal', true);
   p.fillCircle('pedal', tip.x, tip.y, PEDAL.w * 0.8, COLORS.steel2); // the toe peg
   const pa = pawlAngle(state);
   const px = ss.x + PAWL.len * Math.cos(pa), py = ss.y + PAWL.len * Math.sin(pa);
   p.fade('shiftShaft');
   ctx.beginPath(); ctx.moveTo(p.X(ss.x), p.Y(ss.y)); ctx.lineTo(p.X(px), p.Y(py));
   ctx.strokeStyle = COLORS.steel2; ctx.lineWidth = Math.max(2, p.L(PAWL.w)); ctx.stroke();
-  p.hotPath('shiftShaft', true);
   ctx.lineCap = 'butt';
   p.fillCircle('shiftShaft', px, py, PAWL.w * 0.6, COLORS.steel3); // pawl tip on a drum pin
   p.fillCircle('shiftShaft', ss.x, ss.y, ss.r, COLORS.steel3);

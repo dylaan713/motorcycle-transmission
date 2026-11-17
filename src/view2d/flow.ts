@@ -2,7 +2,7 @@ import { gearKind } from '../model/geometry';
 import type { GearNo, PartId } from '../model/parts';
 import type { TorquePath } from '../model/torquePath';
 import type { SimState } from '../sim/types';
-import { COLORS } from '../ui/tokens';
+import { COLORS } from '../tokens';
 import {
   AXIS_Y, CHAIN_PTS, CRANK, CRANK_Y, DRIVEN_R, GEAR_OF, I_PLATE0, IN_Y, INSET, MM, OUT_Y, PLATE_COUNT, PRIMARY_X,
   SLIDER_OF, SLIDERS, SPROCKET_X, gearIndex, gearX, sliderShift, type PartShape,
@@ -12,6 +12,19 @@ import { DASH, NO_DASH, type Painter } from './paint';
 const SLIDER_C = SLIDER_OF.C;
 
 const MAX_FLOW = 48;
+
+/** N·m at which the torque drawing reaches full strength. */
+export const TORQUE_FULL = 150;
+/** Opacity of the torque fill at the smallest torque shown, so low torque still reads as orange. */
+export const HOT_ALPHA_FLOOR = 0.55;
+/** Width of the torque line, CSS px, from the smallest torque shown to TORQUE_FULL and above. */
+export const FLOW_WIDTH = [2.5, 5] as const;
+
+const amount = (torque: number): number => Math.min(1, Math.abs(torque) / TORQUE_FULL);
+/** Opacity of the orange fill on a part carrying `torque`. */
+export const hotAlpha = (torque: number): number => HOT_ALPHA_FLOOR + (1 - HOT_ALPHA_FLOOR) * amount(torque);
+/** Width of the torque line for `torque`: its magnitude is carried in the width, not the colour. */
+export const flowWidth = (torque: number): number => FLOW_WIDTH[0] + (FLOW_WIDTH[1] - FLOW_WIDTH[0]) * amount(torque);
 
 /**
  * The parts to fill as carrying torque: the path's parts, and the 3rd/4th sliding piece whole
@@ -117,8 +130,9 @@ export function createFlow(): Flow {
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       // engine braking: dashed, casing and all, so the parts show through the gaps
       ctx.setLineDash(path.torque < 0 ? DASH : NO_DASH);
-      trace(); ctx.strokeStyle = COLORS.ground; ctx.lineWidth = 6; ctx.stroke();
-      trace(); ctx.strokeStyle = COLORS.signal; ctx.lineWidth = 2.5; ctx.stroke();
+      const w = flowWidth(path.torque);
+      trace(); ctx.strokeStyle = COLORS.ground; ctx.lineWidth = w + 3.5; ctx.stroke();
+      trace(); ctx.strokeStyle = COLORS.signal; ctx.lineWidth = w; ctx.stroke();
       ctx.setLineDash(NO_DASH);
       ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
     },

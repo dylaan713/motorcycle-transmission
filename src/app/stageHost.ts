@@ -22,17 +22,43 @@ export interface StageHost {
 interface Entry { view: View; container: HTMLElement | null }
 interface Size { w: number; h: number }
 
+/** Reports each slot's content size, and changes of pixel ratio alone; ResizeObserver in the page. */
+export type ObserveSize = (
+  slots: HTMLElement[], onSize: (slot: HTMLElement, w: number, h: number) => void, onRatio: () => void,
+) => void;
+
+const observeWithResizeObserver: ObserveSize = (slots, onSize, onRatio) => {
+  if (typeof ResizeObserver === 'undefined') return;
+  const ro = new ResizeObserver((entries) => {
+    for (const entry of entries) onSize(entry.target as HTMLElement, entry.contentRect.width, entry.contentRect.height);
+  });
+  for (const slot of slots) ro.observe(slot);
+  // a change of pixel ratio alone (another monitor, or zoom) resizes nothing, so watch for it too
+  const watchPixelRatio = (): void => {
+    matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => {
+      onRatio();
+      watchPixelRatio(); // the query names one ratio: re-arm for the new one
+    }, { once: true });
+  };
+  watchPixelRatio();
+};
+
 /**
  * With the two slot elements it also places each view's container in its slot, keeps every view
  * sized to its slot, and skips drawing a view that is detached, unsized or in a hidden tab.
- * Without them (unit tests) it only tracks state and calls the views.
+ * Setting a canvas's size clears it, and a resize lands after the frame's render and before the
+ * paint, so a resized view is drawn again at once with the last state, unless it says it redraws
+ * itself (`redrawsOnResize`). Without the slots (unit tests) it only tracks state and calls the views.
  */
-export function createStageHost(mainEl?: HTMLElement, insetEl?: HTMLElement): StageHost {
+export function createStageHost(
+  mainEl?: HTMLElement, insetEl?: HTMLElement, opts: { observe?: ObserveSize } = {},
+): StageHost {
   const views = new Map<ViewName, Entry>();
   let mainName: ViewName | null = null;
   let insetOn = true;
   let highlight: PartId | null = null;
   const slotSize = new Map<HTMLElement, Size>();
+  let last: { state: SimState; path: TorquePath } | null = null;
 
   const other = (name: ViewName | null): ViewName | null => {
     for (const n of views.keys()) if (n !== name) return n;
@@ -47,10 +73,21 @@ export function createStageHost(mainEl?: HTMLElement, insetEl?: HTMLElement): St
     return undefined;
   };
 
+  const drawable = (e: Entry, slot: HTMLElement | undefined): boolean => {
+    if (typeof document !== 'undefined' && document.hidden) return false;
+    if (!slot || !e.container) return true; // no DOM to check: the caller manages it
+    const size = slotSize.get(slot);
+    return e.container.isConnected && size !== undefined && size.w > 0 && size.h > 0;
+  };
+
   const resizeIn = (slot: HTMLElement): void => {
     const size = slotSize.get(slot);
     if (!size) return;
-    for (const [name, e] of views) if (slotOf(name) === slot) e.view.resize(size.w, size.h, dpr());
+    for (const [name, e] of views) {
+      if (slotOf(name) !== slot) continue;
+      e.view.resize(size.w, size.h, dpr());
+      if (last && !e.view.redrawsOnResize && drawable(e, slot)) e.view.render(last.state, last.path);
+    }
   };
 
   /** Puts each container in its slot (or takes it out of the page) and resizes what moved. */
@@ -66,30 +103,12 @@ export function createStageHost(mainEl?: HTMLElement, insetEl?: HTMLElement): St
     resizeIn(mainEl); resizeIn(insetEl);
   };
 
-  if (mainEl && insetEl && typeof ResizeObserver !== 'undefined') {
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const slot = entry.target as HTMLElement;
-        slotSize.set(slot, { w: entry.contentRect.width, h: entry.contentRect.height });
-        resizeIn(slot);
-      }
-    });
-    ro.observe(mainEl); ro.observe(insetEl);
-    // a change of pixel ratio alone (another monitor, or zoom) resizes nothing, so watch for it too
-    const watchPixelRatio = (): void => {
-      matchMedia(`(resolution: ${dpr()}dppx)`).addEventListener('change', () => {
-        resizeIn(mainEl); resizeIn(insetEl);
-        watchPixelRatio(); // the query names one ratio: re-arm for the new one
-      }, { once: true });
-    };
-    watchPixelRatio();
+  if (mainEl && insetEl) {
+    (opts.observe ?? observeWithResizeObserver)([mainEl, insetEl], (slot, w, h) => {
+      slotSize.set(slot, { w, h });
+      resizeIn(slot);
+    }, () => { resizeIn(mainEl); resizeIn(insetEl); });
   }
-
-  const drawable = (e: Entry, slot: HTMLElement | undefined): boolean => {
-    if (!slot || !e.container) return true; // no DOM to check: the caller manages it
-    const size = slotSize.get(slot);
-    return e.container.isConnected && size !== undefined && size.w > 0 && size.h > 0;
-  };
 
   return {
     register(name, view, container) {
@@ -116,7 +135,7 @@ export function createStageHost(mainEl?: HTMLElement, insetEl?: HTMLElement): St
     get main() { return mainName; },
     get inset() { return insetName(); },
     render(state, path) {
-      if (typeof document !== 'undefined' && document.hidden) return;
+      last = { state, path };
       for (const name of [mainName, insetName()]) {
         if (name === null) continue;
         const e = views.get(name)!;

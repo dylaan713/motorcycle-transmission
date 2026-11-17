@@ -5,7 +5,7 @@ import { CAMERA_KEYS, KEYMAP } from '../../src/app/controls';
 const key = (code: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean }> = {}) =>
   ({ code, metaKey: false, ctrlKey: false, altKey: false, ...mods });
 const target = (t: Partial<KeyTarget> = {}): KeyTarget =>
-  ({ tag: 'DIV', role: null, editable: false, inPanel: false, ...t });
+  ({ tag: 'DIV', role: null, editable: false, inPanel: false, focusVisible: false, ...t });
 
 describe('shouldHandleKey', () => {
   test('our keys on the page body are handled; others are not', () => {
@@ -36,10 +36,15 @@ describe('shouldHandleKey', () => {
     // other keys still reach the deck from a focused button
     expect(shouldHandleKey(key('KeyW'), target({ tag: 'BUTTON' }))).toBe(true);
   });
-  test('arrow keys inside the information panel scroll it', () => {
-    expect(shouldHandleKey(key('ArrowUp'), target({ inPanel: true }))).toBe(false);
-    expect(shouldHandleKey(key('ArrowDown'), target({ inPanel: true }))).toBe(false);
-    expect(shouldHandleKey(key('KeyW'), target({ inPanel: true }))).toBe(true);
+  test('arrow keys scroll the information panel when the keyboard put focus there', () => {
+    expect(shouldHandleKey(key('ArrowUp'), target({ inPanel: true, focusVisible: true }))).toBe(false);
+    expect(shouldHandleKey(key('ArrowDown'), target({ inPanel: true, role: 'tabpanel', focusVisible: true }))).toBe(false);
+    expect(shouldHandleKey(key('KeyW'), target({ inPanel: true, focusVisible: true }))).toBe(true);
+  });
+  test('after a mouse click in the panel the arrow keys still ride', () => {
+    // a click on the panel's text focuses the tabpanel, a click on a part focuses its button
+    expect(shouldHandleKey(key('ArrowUp'), target({ inPanel: true, role: 'tabpanel' }))).toBe(true);
+    expect(shouldHandleKey(key('ArrowDown'), target({ inPanel: true, tag: 'BUTTON' }))).toBe(true);
   });
 });
 

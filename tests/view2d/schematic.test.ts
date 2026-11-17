@@ -4,7 +4,7 @@ import type { GearNo, PartId } from '../../src/model/parts';
 import { createSimulation } from '../../src/sim/simulation';
 import type { SimState } from '../../src/sim/types';
 import {
-  BASKET_BACK_X, CHAIN_PTS, CRANK_Y, DOG_WIDTHS, DRIVE_R, DRIVEN_R, FORK_W, IN_Y, OUT_SHAFT_X, OUT_Y, PRIMARY_X, SHIFT_SHAFT,
+  BASKET_BACK_X, CHAIN_PTS, CRANK_Y, DOG_GEAR_W, DOG_SLIDER_W, DRIVE_R, DRIVEN_R, FORK_W, IN_Y, OUT_SHAFT_X, OUT_Y, PRIMARY_X, SHIFT_SHAFT,
   SPRING, SPROCKET_R, SPROCKET_X, dogLugAngles, pedalTip, pickShape, schematicShapes,
 } from '../../src/view2d/layout';
 import { createFlow, torqueCarriers } from '../../src/view2d/flow';
@@ -44,7 +44,7 @@ test('slider C carries both third and fourth on the input shaft', () => {
 
 test('a slider dog is drawn wholly inside a gap between the gear lugs exactly when the simulation aligns it', () => {
   const PITCH = (2 * Math.PI) / PARAMS.dogs.count;
-  const clearance = (DOG_WIDTHS.slider + DOG_WIDTHS.gear) / 2;
+  const clearance = (DOG_SLIDER_W + DOG_GEAR_W) / 2;
   let fits = 0, total = 0;
   for (const slider of ['A', 'B', 'C'] as const) {
     for (let i = 0; i < 90; i++) {

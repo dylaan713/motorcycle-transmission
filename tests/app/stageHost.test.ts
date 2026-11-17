@@ -79,3 +79,52 @@ test('a view registered later receives the current highlight', () => {
   host.register('schematic', a); host.setHighlight('clutchHub');
   host.register('3d', b); expect(b.highlight).toBe('clutchHub');
 });
+
+/** Just enough of an element for the host to move containers between slots. */
+class FakeEl {
+  parentElement: FakeEl | null = null;
+  hidden = false;
+  constructor(readonly root = false) {}
+  append(c: FakeEl) { c.parentElement = this; }
+  remove() { this.parentElement = null; }
+  get isConnected(): boolean { return this.root || (this.parentElement?.isConnected ?? false); }
+}
+
+/** A view that logs resizes and renders, optionally redrawing itself inside resize. */
+function loggingView(log: string[], name: string, redrawsOnResize = false) {
+  const v = {
+    redrawsOnResize,
+    render() { log.push(`${name}:render`); },
+    resize(w: number, h: number) { log.push(`${name}:resize ${w}x${h}`); },
+    pick() { return null; },
+    setHighlight() {},
+    dispose() {},
+  };
+  return v satisfies View;
+}
+
+test('a resize is followed at once by a render with the last state, unless the view redraws itself', () => {
+  const mainEl = new FakeEl(true), insetEl = new FakeEl(true);
+  let onSize: ((slot: HTMLElement, w: number, h: number) => void) | null = null;
+  const host = createStageHost(mainEl as unknown as HTMLElement, insetEl as unknown as HTMLElement, {
+    observe: (_slots, size) => { onSize = size; },
+  });
+  const log: string[] = [];
+  host.register('schematic', loggingView(log, '2d', true), new FakeEl() as unknown as HTMLElement);
+  host.register('3d', loggingView(log, '3d'), new FakeEl() as unknown as HTMLElement);
+  onSize!(mainEl as unknown as HTMLElement, 800, 600);
+  onSize!(insetEl as unknown as HTMLElement, 200, 150);
+  expect(log).toEqual(['3d:resize 800x600', '2d:resize 200x150']); // nothing rendered yet: no state to draw
+  log.length = 0;
+  host.render(STATE, PATH);
+  expect(log).toEqual(['3d:render', '2d:render']);
+  log.length = 0;
+  onSize!(mainEl as unknown as HTMLElement, 640, 480);
+  expect(log).toEqual(['3d:resize 640x480', '3d:render']);
+  log.length = 0;
+  onSize!(insetEl as unknown as HTMLElement, 180, 120);
+  expect(log).toEqual(['2d:resize 180x120']); // the schematic redraws inside its own resize
+  log.length = 0;
+  host.swap(); // the views change slots: each is resized to its new slot and drawn there at once
+  expect(log).toEqual(['2d:resize 640x480', '3d:resize 180x120', '3d:render']);
+});

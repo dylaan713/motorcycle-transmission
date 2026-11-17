@@ -141,6 +141,23 @@ export const DETENT_LABELS: readonly string[] = DETENT_NAMES.map(String);
 export const GEAR_LABEL_Y = -36 * MM;
 /** The whole drawing including labels, metres. */
 export const EXTENT = { x0: -164 * MM, x1: 182 * MM, y0: -140 * MM, y1: 204 * MM };
+/** CSS px kept clear round the drawing. */
+export const FIT_PAD = 8;
+
+/** Model metres to CSS px: x_css = ox + x * scale. */
+export interface Fit { scale: number; ox: number; oy: number }
+
+/** The transform that fits EXTENT, centred, inside a w × h CSS px view with FIT_PAD all round. */
+export function fitTransform(w: number, h: number): Fit {
+  const ew = EXTENT.x1 - EXTENT.x0, eh = EXTENT.y1 - EXTENT.y0;
+  const scale = Math.max(0, Math.min((w - 2 * FIT_PAD) / ew, (h - 2 * FIT_PAD) / eh));
+  return { scale, ox: (w - ew * scale) / 2 - EXTENT.x0 * scale, oy: (h - eh * scale) / 2 - EXTENT.y0 * scale };
+}
+
+/** A CSS px point in the view to model metres, under `fit`; null when the view has no size. */
+export function toModel(fit: Fit, x: number, y: number): { x: number; y: number } | null {
+  return fit.scale > 0 ? { x: (x - fit.ox) / fit.scale, y: (y - fit.oy) / fit.scale } : null;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Sliders and their dogs.
@@ -163,9 +180,6 @@ export const SLIDERS: readonly SliderDraw[] = (['A', 'B', 'C'] as const).map((id
   };
 });
 export const SLIDER_OF: Record<SliderId, SliderDraw> = { A: SLIDERS[0], B: SLIDERS[1], C: SLIDERS[2] };
-
-/** Angular width of a slider's dog and of a gear's lug, drawn frame, rad. */
-export const DOG_WIDTHS = { slider: DOG_SLIDER_W, gear: DOG_GEAR_W } as const;
 
 /**
  * Drawn-frame angles of the centre of the first of five dogs on a slider's face and of the first

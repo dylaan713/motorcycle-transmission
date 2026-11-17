@@ -1,5 +1,5 @@
 import { PARAMS } from '../../sim/params';
-import { COLORS } from '../../ui/tokens';
+import { COLORS } from '../../tokens';
 import {
   CHAIN_COS, CHAIN_PITCH, CHAIN_PTS, CHAIN_SIN, CHAIN_WRAP, I_CHAIN_WRAP, I_NUT, INSET, MM, OUT_Y, SPROCKET_R, SPROCKET_X,
   TWO_PI, type PartShape,
@@ -30,12 +30,13 @@ export function drawFinalDrive(p: Painter, shapes: readonly PartShape[], outAngl
   // ground under the wheel
   p.fade('rearWheel');
   const gy = p.line1(p.Y(rear.y + wheel.r));
-  ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1;
+  ctx.strokeStyle = COLORS.third; ctx.lineWidth = p.hair;
   ctx.beginPath(); ctx.moveTo(p.X(rear.x - wheel.r - 6 * MM), gy); ctx.lineTo(p.X(rear.x + wheel.r + 4 * MM), gy); ctx.stroke();
   // wheel: tyre, rim and five spokes
   p.fillCircle('rearWheel', rear.x, rear.y, wheel.r, COLORS.steel2);
   p.fillCircle(null, rear.x, rear.y, wheel.rim, COLORS.ground, COLORS.third);
-  p.radialTicks(rear.x, rear.y, 3 * MM, wheel.rim, wheelAngle, 5, p.hot.has('rearWheel') ? COLORS.signal : COLORS.steel3, Math.max(1.5, p.L(2 * MM)));
+  p.radialTicks(rear.x, rear.y, 3 * MM, wheel.rim, wheelAngle, 5, COLORS.steel3, Math.max(1.5, p.L(2 * MM)));
+  p.hotPath('rearWheel', true); // the spokes take the torque overlay at the same opacity as every part
   // rear sprocket
   p.fillCircle('rearSprocket', rear.x, rear.y, rear.r, COLORS.steel2);
   p.radialTicks(rear.x, rear.y, rear.r - 1.6 * MM, rear.r, wheelAngle, PARAMS.final.rear, p.tickColour('rearSprocket'), 1);

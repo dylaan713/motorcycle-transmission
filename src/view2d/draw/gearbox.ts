@@ -2,7 +2,7 @@ import { gearAngle, gearKind, pitchRadius } from '../../model/geometry';
 import type { GearNo, PartId } from '../../model/parts';
 import { PARAMS } from '../../sim/params';
 import type { SimState } from '../../sim/types';
-import { COLORS } from '../../ui/tokens';
+import { COLORS } from '../../tokens';
 import {
   AXIS_Y, BEARING, C_HUB_R, CURSOR_Y, DOG_GEAR_W, DOG_PITCH, DOG_SLIDER_W, DOGS, FORK_W, IN_SHAFT_X, IN_Y, LUG_LEN, MM,
   OUT_SHAFT_X, OUT_Y, PIN_R, SHAFT_R, SLIDER_OF, SLIDERS, WALL_PIECES, WALLS, I_WEB, dogLugAngles, gearIndex, norm,
@@ -84,7 +84,6 @@ function drawForkRod(p: Painter, id: PartId, body: number, topY: number): void {
   p.quad(body, CURSOR_Y, body, topY, FORK_W / 2);
   ctx.fillStyle = COLORS.steel3; ctx.fill();
   ctx.strokeStyle = COLORS.third; ctx.lineWidth = 1; ctx.stroke();
-  p.hotPath(id);
 }
 
 /** Fork C's rod, which passes behind the output shaft and its gears. */
