@@ -143,7 +143,7 @@ test('invariants hold under 60 s of seeded random inputs', () => {
     expect(Number.isFinite(st.engine.omega + st.inputShaftOmega + st.outputShaftOmega)).toBe(true);
     if (st.lockedGear) expect(st.inputShaftOmega).toBeCloseTo(gearRatio(st.lockedGear) * st.outputShaftOmega, 5);
   });
-});
+}, 30_000); // 120,000 steps: ~2.5 s alone, more under a parallel full run
 test('from a false neutral a full stroke finds the next gear, never neutral or two gears away', () => {
   // [rest angle, gear above, gear below]
   const cases: Array<[number, GearId, GearId]> = [[90, 3, 2], [150, 4, 3], [210, 5, 4]];

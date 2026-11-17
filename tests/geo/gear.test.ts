@@ -122,7 +122,7 @@ test('every gearbox pair meshes without penetration through a full tooth pitch',
       expect(depth, `${zA}/${zB} at psi ${psi.toFixed(3)}`).toBeLessThan(MESH_TOLERANCE);
     }
   }
-});
+}, 30_000); // ~3.5 s alone, more under a parallel full run: an explicit timeout, not Vitest's 5 s
 
 test('the primary pair meshes without penetration', () => {
   const [zA, zB] = [PARAMS.primary.drive, PARAMS.primary.driven];
