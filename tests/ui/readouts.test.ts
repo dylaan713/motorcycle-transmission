@@ -37,3 +37,14 @@ test('readings clamp to their fixed widths and never show a negative zero', () =
   r = formatReading(s, NEUTRAL_INPUTS);
   expect(r.slipRpm).toBe('−12'); expect(r.torqueNm).toBe('−40');
 });
+
+test('the tachometer needle stops at the end of its scale while the reading stays true', async () => {
+  const { tachPosition, TACH_MAX_RPM } = await import('../../src/ui/readouts');
+  expect(tachPosition(0)).toBe(0);
+  expect(tachPosition(7500)).toBe(0.5);
+  expect(tachPosition(TACH_MAX_RPM)).toBe(1);
+  expect(tachPosition(17200)).toBe(1);
+  expect(tachPosition(-300)).toBe(0);
+  const s = createSimulation().getState(); s.engine.omega = rpm(17200);
+  expect(formatReading(s, NEUTRAL_INPUTS).rpm).toBe('17200');
+});

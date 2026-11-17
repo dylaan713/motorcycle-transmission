@@ -11,16 +11,16 @@
 <body>
   <div class="app">
     <header class="app-header">
-      <h1>Inside a motorcycle gearbox</h1>
-      <div class="header-slots">
-        <div id="live" class="mono" aria-live="off"></div>
-        <div id="mode"></div>
+      <div class="title">
+        <h1>Inside a motorcycle gearbox</h1>
+        <span class="title-note" aria-hidden="true">live simulation</span>
       </div>
+      <div id="mode"></div>
     </header>
     <main class="app-main">
       <section id="stage" aria-label="Gearbox"><p id="status" class="status"></p></section>
       <section id="deck" aria-label="Controls"></section>
-      <aside id="panel" aria-label="Information"></aside>
+      <aside id="panel" aria-labelledby="panel-title"></aside>
       <noscript>
         <div class="noscript-note">
           <h2>This page needs JavaScript</h2>

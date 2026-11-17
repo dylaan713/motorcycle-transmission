@@ -47,3 +47,13 @@ describe('tokens', () => {
     for (const [k, v] of Object.entries(COLORS)) expect(set[NAMES[k]!]).toBe(v);
   });
 });
+
+describe('tachometer graphics reach 3:1 against what they sit on', () => {
+  test('track outline and ticks on the cluster, fill and band hatch on the track, needle on both', () => {
+    expect(contrast(COLORS.third, COLORS.surface)).toBeGreaterThanOrEqual(3); // track outline, ticks
+    expect(contrast(COLORS.steel4, COLORS.steel1)).toBeGreaterThanOrEqual(3); // fill on the track
+    expect(contrast(COLORS.third, COLORS.steel1)).toBeGreaterThanOrEqual(3); // band hatch
+    expect(contrast(COLORS.ink, COLORS.steel1)).toBeGreaterThanOrEqual(3); // needle on the track
+    expect(contrast(COLORS.ink, COLORS.steel4)).toBeGreaterThanOrEqual(3); // needle on the fill
+  });
+});

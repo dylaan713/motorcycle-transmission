@@ -18,6 +18,9 @@ export function createLabels(): (p: Painter, state: SimState) => void {
     for (const g of GEAR_ORDER) {
       p.label(gearAxialPosition(g), GEAR_LABEL_Y, String(g), 'center', state.lockedGear === g ? COLORS.ink : COLORS.third);
     }
+    // what the row of numbers names; to the right of it, where the drawing leaves room at every size
+    const last = GEAR_ORDER[GEAR_ORDER.length - 1];
+    p.label(gearAxialPosition(last), GEAR_LABEL_Y, 'Gear pair', 'left', COLORS.third, 0, 14);
     p.label(IN_SHAFT_X[1] + 4 * MM, IN_Y, 'Input shaft', 'left');
     p.label(OUT_SHAFT_X[1] + 4 * MM, OUT_Y, 'Output shaft', 'left');
     const lx = BAND.x0, ldx = -26; // clear of the detent labels on the band's edge

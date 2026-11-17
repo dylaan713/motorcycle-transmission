@@ -3,21 +3,23 @@ import '@fontsource-variable/jetbrains-mono/index.css';
 import './ui/styles.css';
 import { applyTokens } from './ui/tokens';
 import { CAMERA_KEYS, createControls, KEYMAP } from './app/controls';
+import { createContextGuard } from './app/contextGuard';
 import { createDriver } from './app/driver';
-import { describeTarget, shouldHandleCameraKey, shouldHandleKey } from './app/keys';
+import { describeTarget, shouldHandleCameraKey, shouldHandleKey, trackFocusOrigin } from './app/keys';
 import { createLoop, startAnimation } from './app/loop';
 import { holdForReducedMotion } from './app/motion';
+import { createStageHost, type ViewName } from './app/stageHost';
+import type { View } from './app/view';
 import { mountDeck } from './ui/deck';
 import { createSimulation } from './sim/simulation';
 import { torquePath } from './model/torquePath';
 import { selection } from './app/selection';
 import { createSchematic } from './view2d/schematic';
-import { formatReading, mountReadouts, type Reading } from './ui/readouts';
-import { mountPanel } from './ui/panel';
+import { formatReading, mountCluster, type Reading } from './ui/readouts';
+import { mountPanel, mountPartCard } from './ui/panel';
 import { mountModeChip, mountStatus } from './ui/status';
 import { mountLoader } from './ui/loader';
 import { el } from './ui/dom';
-import { createStageHost } from './app/stageHost';
 import { load3d, webglAvailable } from './view3d/load';
 import type { View3d } from './view3d/view';
 import { mountCallouts, type Callouts, type Rect } from './ui/callouts';
@@ -33,22 +35,41 @@ const driver = createDriver(controls.source, { autoStart: false });
 const ARRIVAL_MS = 900;
 const TEXT_MS = 1000 / 15; // text readouts change at most 15 times a second
 
+const status = mountStatus(document.getElementById('status')!);
+const panel = mountPanel(document.getElementById('panel')!);
+const chip = mountModeChip(document.getElementById('mode')!, driver);
+/** Reset leaves the bike at a standstill in neutral with the engine running, and the controls to match. */
+const reset = (): void => { sim.reset(); controls.reset(); };
 const deck = mountDeck(document.getElementById('deck')!, controls, {
   onTouch: () => driver.takeOver(),
-  onReset: () => sim.reset(),
+  onReset: reset,
 });
+
 // the stage holds two slots; each view draws into its own container, which the host moves between them
 const stage = document.getElementById('stage')!;
 const mainSlot = el('div', 'stage-main', { id: 'stage-main' });
 const insetSlot = el('button', 'stage-inset', { id: 'stage-inset', type: 'button', 'aria-label': 'Swap views', hidden: '' });
 stage.prepend(mainSlot, insetSlot);
 const host = createStageHost(mainSlot, insetSlot);
+
+// the overlay over the views and under the loader: the instrument cluster and the part card under it
+const overlay = el('div', 'stage-overlay');
+const clusterEl = el('div', 'cluster', { role: 'group', 'aria-label': 'Instruments' });
+const cardEl = el('section', 'part-card');
+overlay.append(clusterEl, cardEl);
+insetSlot.after(overlay);
+const cluster = mountCluster(clusterEl);
+
 const wide = matchMedia('(min-width: 900px)');
-host.setInset(wide.matches); // phones get the whole stage for one view
+const guard = createContextGuard(); // the 3D view's WebGL context: which view may be main
+let insetWanted = wide.matches; // phones get the whole stage for one view
+const applyInset = (): void => host.setInset(insetWanted && !guard.lost); // never show a dead 3D canvas
+applyInset();
 // set once the 3D view has arrived
 let view3d: View3d | null = null;
 let toolbar: Toolbar | null = null;
 let callouts: Callouts | null = null;
+let leave3d: (() => void) | null = null;
 let labelsOn = wide.matches; // labels default on at 900px and wider
 const syncChrome = (): void => {
   toolbar?.sync({ view: host.main ?? 'schematic', inset: host.inset !== null });
@@ -56,29 +77,43 @@ const syncChrome = (): void => {
   callouts?.invalidate();
   stage.toggleAttribute('data-inset', host.inset !== null);
 };
+/** Makes `name` the main view, unless the 3D context is lost and it would put the dead canvas back. */
+const showMain = (name: ViewName): void => {
+  const to = guard.request(name);
+  if (to !== null) host.setMain(to);
+  syncChrome();
+};
 wide.addEventListener('change', () => {
-  host.setInset(wide.matches);
+  insetWanted = wide.matches;
+  applyInset();
   labelsOn = wide.matches;
   toolbar?.sync({ labels: labelsOn });
   syncChrome();
 });
-insetSlot.addEventListener('click', () => { host.swap(); syncChrome(); });
+insetSlot.addEventListener('click', () => { if (host.inset !== null) showMain(host.inset); });
 
-const schematicBox = el('div', 'view');
-const canvas = el('canvas', 'view-canvas', {
-  role: 'img', 'aria-label': 'Cutaway schematic of the clutch, gearbox and final drive, with the torque path in orange',
+mountPartCard(cardEl, {
+  onClose: () => panel.focusTab(),
+  onChange: () => callouts?.invalidate(),
 });
-schematicBox.append(canvas);
-const view = createSchematic(canvas);
-host.register('schematic', view, schematicBox);
 
-const readouts = mountReadouts(document.querySelector<HTMLElement>('.app-header')!, document.getElementById('live')!);
-const panel = mountPanel(document.getElementById('panel')!);
-const status = mountStatus(document.getElementById('status')!);
-const chip = mountModeChip(document.getElementById('mode')!, driver);
+// the schematic; if this device cannot draw it the readings, panel and controls still work
+let view: View | null = null;
+try {
+  const schematicBox = el('div', 'view');
+  const canvas = el('canvas', 'view-canvas', {
+    role: 'img', 'aria-label': 'Cutaway schematic of the clutch, gearbox and final drive, with the torque path in orange',
+  });
+  schematicBox.append(canvas);
+  view = createSchematic(canvas);
+  host.register('schematic', view, schematicBox);
+} catch (err) {
+  console.warn('Schematic not drawn:', err);
+  status.notice('The schematic cannot be drawn on this device.');
+}
 
-let arrivalStart: number | null = reducedMotion ? null : performance.now();
-if (arrivalStart !== null) view.setReveal?.(0);
+let arrivalStart: number | null = reducedMotion || view === null ? null : performance.now();
+if (arrivalStart !== null) view?.setReveal?.(0);
 else chip.ready();
 
 let reading: Reading | null = null;
@@ -87,7 +122,7 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
   const now = performance.now();
   if (arrivalStart !== null) {
     const p = (now - arrivalStart) / ARRIVAL_MS;
-    view.setReveal?.(p);
+    view?.setReveal?.(p);
     if (p >= 1) {
       arrivalStart = null;
       if (driver.mode === 'idle') driver.startDemo(); // unless the visitor already took over
@@ -100,7 +135,7 @@ const loop = createLoop(sim, () => driver.source(), (state) => {
     panel.syncLive(reading);
     status.sync(reading);
   }
-  readouts.sync(reading, state);
+  cluster.sync(reading, state);
   deck.sync(state, loop.lastInputs);
   host.render(state, torquePath(state));
   callouts?.sync();
@@ -143,6 +178,7 @@ selection.subscribe((id) => { if (!hovering) host.setHighlight(id); });
 
 // the 3D view arrives after first paint; the schematic stays rideable underneath until it does
 const UNAVAILABLE = '3D view unavailable on this device; showing the schematic.';
+const PAUSED = '3D view paused; showing the schematic.';
 const fallBack = (why: unknown): void => {
   console.warn('3D view not loaded:', why);
   status.notice(UNAVAILABLE);
@@ -165,41 +201,68 @@ if (webglAvailable()) {
 
 /** The toolbar, the callouts and context loss, once the 3D view is on the stage. */
 function arrive3d(v3: View3d): void {
+  leave3d?.(); // a 3D view arriving again replaces everything the last one mounted
   view3d = v3;
   const tools = el('div', 'stage-tools');
   const layer = el('div', 'callout-layer');
   stage.insertBefore(layer, insetSlot); // under the inset, over the main view
   stage.append(tools);
   stage.toggleAttribute('data-tools', true); // the main view makes room for it
-  toolbar = mountToolbar(tools, {
-    onView: (v) => { host.setMain(v); syncChrome(); },
-    onInset: (on) => { host.setInset(on); syncChrome(); },
+  const bar = mountToolbar(tools, {
+    onView: (v) => showMain(v),
+    onInset: (on) => { insetWanted = on; applyInset(); syncChrome(); },
     onTorqueFlow: (on) => v3.setTorqueFlow(on),
     onLabels: (on) => { labelsOn = on; syncChrome(); },
     onResetCamera: () => v3.resetCamera(),
     onOrbit: (d) => v3.orbit(d, 0),
     onZoom: (f) => v3.zoom(f),
   }, { view: host.main ?? '3d', inset: host.inset !== null, labels: labelsOn });
-  callouts = mountCallouts(layer, v3);
-  // cards keep clear of the status line and loader along the top, the toolbar and the inset
+  toolbar = bar;
+  const cards = mountCallouts(layer, v3);
+  callouts = cards;
+  // cards keep clear of the status line and loader along the top, the cluster and part card, the toolbar and the inset
   const TOP_BAND = 48;
-  callouts.setAvoid(() => {
+  cards.setAvoid(() => {
     const origin = layer.getBoundingClientRect();
     const rel = (r: DOMRect): Rect => ({ x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height });
-    const out: Rect[] = [{ x: 0, y: 0, w: origin.width, h: TOP_BAND }, rel(tools.getBoundingClientRect())];
+    const out: Rect[] = [{ x: 0, y: 0, w: origin.width, h: TOP_BAND }, rel(tools.getBoundingClientRect()), rel(clusterEl.getBoundingClientRect())];
+    if (!cardEl.hidden) out.push(rel(cardEl.getBoundingClientRect()));
     if (!insetSlot.hidden) out.push(rel(insetSlot.getBoundingClientRect()));
     return out;
   });
-  v3.onContext((lost) => {
-    if (lost) { host.setMain('schematic'); status.notice('3D view paused; showing the schematic.'); }
-    else { host.setMain('3d'); status.notice(''); }
+  const onContext = (lost: boolean): void => {
+    if (lost) {
+      host.setMain(guard.lose(host.main));
+      status.notice(PAUSED);
+    } else {
+      const to = guard.restore(host.main);
+      if (to !== null) host.setMain(to);
+      status.clear(PAUSED); // only its own notice: any other message stays
+    }
+    applyInset();
+    bar.setAvailable3d(!guard.lost);
     syncChrome();
-  });
+  };
+  const unsubscribe = v3.onContextChange(onContext);
+  if (v3.contextLost) onContext(true);
+  leave3d = () => {
+    unsubscribe();
+    bar.dispose();
+    cards.dispose();
+    layer.remove();
+    tools.remove();
+    stage.toggleAttribute('data-tools', false);
+    toolbar = null; callouts = null; view3d = null; leave3d = null;
+  };
   syncChrome();
 }
 
 // taking over starts from what the bike was doing, so each control ramps back from there
-driver.onModeChange((mode) => { if (mode === 'visitor') controls.seed(loop.lastInputs); });
+driver.onModeChange((mode) => {
+  if (mode === 'visitor') controls.seed(loop.lastInputs);
+  deck.setMode(mode);
+});
+deck.setMode(driver.mode);
 
 const cameraKey = (e: KeyboardEvent): void => {
   if (view3d === null || host.main !== '3d') return;
@@ -212,6 +275,7 @@ const cameraKey = (e: KeyboardEvent): void => {
   else if (!e.repeat) view3d.resetCamera();
 };
 
+trackFocusOrigin(window);
 window.addEventListener('keydown', (e) => {
   const target = describeTarget(e.target);
   if (shouldHandleCameraKey(e, target)) { cameraKey(e); return; } // the camera never takes over the ride
@@ -219,7 +283,7 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault(); // repeats too, so a held arrow never scrolls the page
   if (e.repeat) return;
   driver.takeOver();
-  if (KEYMAP[e.code] === 'reset') sim.reset();
+  if (KEYMAP[e.code] === 'reset') reset();
   controls.setKey(e.code, true);
 });
 window.addEventListener('keyup', (e) => { controls.setKey(e.code, false); });

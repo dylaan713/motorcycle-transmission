@@ -1,6 +1,8 @@
 import type { Controls } from '../app/controls';
+import type { DriverMode } from '../app/driver';
 import type { Inputs, SimState } from '../sim/types';
-import { el } from './dom';
+import { clamp } from '../sim/units';
+import { el, srOnly } from './dom';
 
 type Analog = 'throttle' | 'clutchLever' | 'pedal';
 type Hooks = { onTouch(): void; onReset(): void };
@@ -128,12 +130,19 @@ function show(s: Slider, v: number, text: (pct: number) => string): void {
 }
 
 // no data-press: a drag surface must not scale under the pointer; its own movement is the feedback
-const sliderAttrs = (label: string, shortcut: string, min: number, orientation: string): Record<string, string> => ({
+// these sliders spring back when let go and answer only the arrows that move them, so they say so
+const sliderAttrs = (label: string, shortcut: string, min: number, orientation: string, hintId: string): Record<string, string> => ({
   role: 'slider', tabindex: '0', 'aria-label': label, 'aria-keyshortcuts': shortcut,
   'aria-valuemin': String(min), 'aria-valuemax': '100', 'aria-orientation': orientation,
+  'aria-roledescription': 'spring-return slider', 'aria-describedby': hintId,
 });
+const HINTS: Record<string, string> = {
+  'hint-throttle': 'Springs back to closed when let go. Hold the up or right arrow to open it.',
+  'hint-clutch': 'Springs back to released when let go. Hold the right or up arrow to pull it.',
+  'hint-pedal': 'Springs back to rest when let go. Up arrow shifts up, down arrow shifts down.',
+};
 
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+const clamp01 = (v: number): number => clamp(v, 0, 1);
 const toggle = (e: HTMLElement, name: string, on: boolean): void => {
   if ((name in e.dataset) !== on) { if (on) e.dataset[name] = ''; else delete e.dataset[name]; }
 };
@@ -145,16 +154,16 @@ const toggle = (e: HTMLElement, name: string, on: boolean): void => {
  */
 export function mountDeck(
   host: HTMLElement, controls: Controls, hooks: Hooks,
-): { sync(state: SimState, inputs: Inputs): void } {
+): { sync(state: SimState, inputs: Inputs): void; setMode(mode: DriverMode): void } {
   // throttle: a vertical track with a grip; the grip's position is absolute in the track
-  const throttleEl = el('div', 'deck-throttle', sliderAttrs('Throttle', 'ArrowUp', 0, 'vertical'),
+  const throttleEl = el('div', 'deck-throttle', sliderAttrs('Throttle', 'ArrowUp', 0, 'vertical', 'hint-throttle'),
     el('div', 'deck-throttle-fill'), el('div', 'deck-throttle-grip'));
   const throttle = slider(throttleEl, 'throttle', controls, () => hooks.onTouch(),
     { ArrowUp: 'ArrowUp', ArrowRight: 'ArrowUp' },
     (e, s) => clamp01((s.rect.bottom - e.clientY) / s.rect.height));
 
   // clutch: a lever swinging about its perch toward a fixed grip; drag right or up to pull
-  const clutchEl = el('div', 'deck-clutch', sliderAttrs('Clutch lever', 'C', 0, 'horizontal'),
+  const clutchEl = el('div', 'deck-clutch', sliderAttrs('Clutch lever', 'C', 0, 'horizontal', 'hint-clutch'),
     el('div', 'deck-clutch-bar'),
     el('div', 'deck-clutch-lever', {}, el('div', 'deck-pivot')));
   const clutch = slider(clutchEl, 'clutchLever', controls, () => hooks.onTouch(),
@@ -162,11 +171,11 @@ export function mountDeck(
     (e, s) => clamp01(s.v + ((e.clientX - s.x) - (e.clientY - s.y)) / (s.rect.width * 0.75)));
 
   // shift pedal: rocks about a pivot; drag up from centre for up, down for down
-  const pedalEl = el('div', 'deck-pedal', sliderAttrs('Shift pedal', 'W S', -100, 'vertical'),
+  const pedalEl = el('div', 'deck-pedal', sliderAttrs('Shift pedal', 'W S', -100, 'vertical', 'hint-pedal'),
     el('div', 'deck-pedal-arm', {}, el('div', 'deck-pivot')));
   const pedal = slider(pedalEl, 'pedal', controls, () => hooks.onTouch(),
     { ArrowUp: 'KeyW', ArrowDown: 'KeyS' },
-    (e, s) => Math.min(1, Math.max(-1, s.v - (e.clientY - s.y) / (s.rect.height / 2))));
+    (e, s) => clamp(s.v - (e.clientY - s.y) / (s.rect.height / 2), -1, 1));
 
   const up = button('deck-tap', 'Up', 'W', 'W', 'Shift up');
   const down = button('deck-tap', 'Down', 'S', 'S', 'Shift down');
@@ -185,21 +194,25 @@ export function mountDeck(
   holdable(starter, () => controls.setStarter(true), () => controls.setStarter(false), STARTER_PULSE_MS);
 
   const cell = (cls: string, ...children: HTMLElement[]): HTMLElement => el('div', `deck-cell ${cls}`, {}, ...children);
+  // while the demo rides, an invitation at the deck's right end says how to take over
+  const invite = el('p', 'deck-invite', {}, 'The demo rider is riding. Touch any control to take over.');
+  // every button is one row high, in two rows; on phones the clutch goes far left and the throttle far right
   const root = el('div', 'deck', {},
     cell('deck-cell-throttle', throttleEl, caption('Throttle', '↑')),
     cell('deck-cell-clutch', clutchEl, caption('Clutch', 'C')),
     el('div', 'deck-shift', { role: 'group', 'aria-label': 'Gear shift' },
       cell('deck-cell-pedal', pedalEl, caption('Shift', 'W/S')),
       el('div', 'deck-stack', {}, up, down)),
-    el('div', 'deck-stack', {}, brake),
-    el('div', 'deck-stack', {}, ignition, starter),
-    el('div', 'deck-stack deck-stack-reset', {}, reset));
+    el('div', 'deck-stack deck-stack-brake', {}, brake, reset),
+    el('div', 'deck-stack deck-stack-engine', {}, ignition, starter),
+    invite);
 
   // any interaction hands control to the visitor; capture runs it before the widget's own handler
   root.addEventListener('pointerdown', () => hooks.onTouch(), true);
   root.addEventListener('click', () => hooks.onTouch(), true);
   root.addEventListener('contextmenu', (e) => e.preventDefault()); // long-press on touch screens
-  host.replaceChildren(root);
+  const hints = Object.entries(HINTS).map(([id, text]) => Object.assign(srOnly(text), { id }));
+  host.replaceChildren(root, ...hints);
 
   const sliders: Array<[Slider, Analog, (pct: number) => string]> = [
     [throttle, 'throttle', (p) => `${p} percent open`],
@@ -222,5 +235,6 @@ export function mountDeck(
       if (ignition.getAttribute('aria-pressed') !== on) ignition.setAttribute('aria-pressed', on);
       toggle(root, 'running', state.engine.running);
     },
+    setMode(mode) { toggle(root, 'demo', mode === 'demo'); },
   };
 }

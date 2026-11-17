@@ -1,16 +1,17 @@
 import { KEYMAP } from '../app/controls';
 import { selection } from '../app/selection';
-import { PARTS, type GearNo, type PartId } from '../model/parts';
+import { ORDINAL, PART_GROUPS, PARTS, type GearNo, type PartId } from '../model/parts';
 import { clutchCapacityMax } from '../sim/clutch';
-import { finalRatio, gearRatio, overallRatio, primaryRatio, roadSpeed } from '../sim/kinematics';
+import { finalRatio, gearRatio, overallRatio, roadSpeed } from '../sim/kinematics';
 import { PARAMS } from '../sim/params';
 import { rpm } from '../sim/units';
 import { el, setText, srOnly } from './dom';
 import type { Reading } from './readouts';
 
 const GEARS: readonly GearNo[] = [1, 2, 3, 4, 5, 6];
-const ORDINAL: Record<GearNo, string> = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };
 const thousands = (n: number): string => n.toLocaleString('en-US');
+/** A gear pair's teeth, always written driver:driven, with its ratio (driver turns per driven turn) beside it. */
+export const teeth = (driver: number, driven: number): string => `${driver}:${driven} teeth, ${(driven / driver).toFixed(3)}`;
 
 /** Road speed for an engine speed in gear g, km/h. */
 const kmhAt = (g: GearNo, engineRpm: number): number =>
@@ -62,7 +63,7 @@ function ratios(): { root: HTMLElement; rows: Map<string, HTMLElement> } {
   for (const g of GEARS) {
     const [i, o] = PARAMS.gears[g];
     const row = el('tr', '', {},
-      el('th', '', { scope: 'row' }, ORDINAL[g]),
+      el('th', '', { scope: 'row' }, ORDINAL[g].short),
       el('td', '', {}, `${i}:${o}`),
       el('td', '', {}, gearRatio(g).toFixed(3)),
       el('td', '', {}, overallRatio(g).toFixed(2)),
@@ -79,7 +80,7 @@ function ratios(): { root: HTMLElement; rows: Map<string, HTMLElement> } {
   const root = el('div', 'prose', {},
     el('div', 'table-wrap', {}, table),
     el('p', 'note', {},
-      `Teeth are input : output. Ratio is input shaft turns per output shaft turn; overall multiplies in the primary drive (${PARAMS.primary.driven}:${PARAMS.primary.drive}) and the chain (${PARAMS.final.rear}:${PARAMS.final.front}), so it is crankshaft turns per rear wheel turn. Top speed is the road speed at the ${thousands(PARAMS.engine.limiterRpm)} rpm limiter; in sixth, air drag holds the bike below it.`));
+      `Teeth are written driver:driven, here input shaft gear to output shaft gear. Ratio is input shaft turns per output shaft turn; overall multiplies in the primary drive (${teeth(PARAMS.primary.drive, PARAMS.primary.driven)}) and the chain (${teeth(PARAMS.final.front, PARAMS.final.rear)}), so it is crankshaft turns per rear wheel turn. Top speed is the road speed at the ${thousands(PARAMS.engine.limiterRpm)} rpm limiter; in sixth, air drag holds the bike below it.`));
   return { root, rows };
 }
 
@@ -115,8 +116,8 @@ function liveData(): { root: HTMLElement; values: Map<keyof Reading, HTMLElement
 function specifications(): HTMLElement {
   const peak = PARAMS.engine.torqueCurve.reduce((a, b) => (b[1] > a[1] ? b : a));
   const rows: Array<[string, string]> = [
-    ['Primary drive', `${PARAMS.primary.driven}:${PARAMS.primary.drive} teeth, ${primaryRatio.toFixed(3)}`],
-    ['Final drive', `${PARAMS.final.rear}:${PARAMS.final.front} teeth, ${finalRatio.toFixed(3)}`],
+    ['Primary drive', teeth(PARAMS.primary.drive, PARAMS.primary.driven)],
+    ['Final drive', teeth(PARAMS.final.front, PARAMS.final.rear)],
     ['Rear wheel radius', `${Math.round(PARAMS.wheelRadius * 1000)} mm`],
     ['Mass, bike and rider', `${PARAMS.mass} kg`],
     ['Clutch', `${PARAMS.clutch.surfaces / 2} friction plates, ${PARAMS.clutch.surfaces} faces`],
@@ -132,21 +133,14 @@ function specifications(): HTMLElement {
 
 // ---- Parts -------------------------------------------------------------------------------------
 
-const GROUPS: ReadonlyArray<[string, (id: PartId) => boolean]> = [
-  ['Clutch', (id) => ['crank', 'primaryDrive', 'clutchBasket', 'frictionPlates', 'steelPlates', 'clutchHub', 'pressurePlate'].includes(id)],
-  ['Shafts and gears', (id) => id === 'inputShaft' || id === 'outputShaft' || id.startsWith('gear')],
-  ['Shift mechanism', (id) => id.startsWith('fork') || ['shiftDrum', 'starWheel', 'detentArm', 'shiftShaft', 'pedal'].includes(id)],
-  ['Final drive', (id) => ['sprocket', 'chain', 'rearSprocket', 'rearWheel'].includes(id)],
-];
-
 function partsList(): { root: HTMLElement; buttons: Map<PartId, HTMLButtonElement> } {
   const buttons = new Map<PartId, HTMLButtonElement>();
   const root = el('div', 'prose');
   root.append(el('p', 'note', {}, 'Pick a part to highlight it in the drawing and read what it does.'));
-  for (const [title, member] of GROUPS) {
+  for (const { title, parts } of PART_GROUPS) {
     const list = el('ul', 'part-list');
-    for (const p of Object.values(PARTS)) {
-      if (!member(p.id)) continue;
+    for (const id of parts) {
+      const p = PARTS[id];
       const b = el('button', 'part-btn', { type: 'button', 'data-press': '', 'aria-pressed': 'false' }, p.name);
       b.addEventListener('click', () => selection.set(selection.get() === p.id ? null : p.id));
       buttons.set(p.id, b);
@@ -178,12 +172,12 @@ export function tabKeyTarget(e: TabKey, count: number, current: number): number 
 }
 
 /**
- * The information panel: a card for the selected part above five tabs (Overview, Ratios, Live
- * data, Specs, Parts) in the ARIA tabs pattern, with roving tabindex and automatic
- * activation. The part card follows the shared selection; `syncLive` updates the live figures
- * and marks the current gear in the ratio table, writing only what changed.
+ * The information panel: five tabs (Overview, Ratios, Live data, Specs, Parts) in the ARIA tabs
+ * pattern, with roving tabindex and automatic activation, under a heading for screen readers.
+ * The Parts tab follows the shared selection; `syncLive` updates the live figures and marks the
+ * current gear in the ratio table, writing only what changed.
  */
-export function mountPanel(host: HTMLElement): { showPart(id: PartId | null): void; syncLive(r: Reading): void } {
+export function mountPanel(host: HTMLElement): { syncLive(r: Reading): void; focusTab(): void } {
   const ratioTab = ratios();
   const live = liveData();
   const parts = partsList();
@@ -195,7 +189,7 @@ export function mountPanel(host: HTMLElement): { showPart(id: PartId | null): vo
     ['parts', 'Parts', parts.root],
   ];
 
-  const tablist = el('div', 'tabs', { role: 'tablist', 'aria-label': 'Information' });
+  const tablist = el('div', 'tabs', { role: 'tablist', 'aria-label': 'Topics' });
   const tabs: HTMLButtonElement[] = [];
   const panels: HTMLElement[] = [];
   for (const [key, label, content] of sections) {
@@ -235,37 +229,20 @@ export function mountPanel(host: HTMLElement): { showPart(id: PartId | null): vo
   });
   select(0, false);
 
-  // the selected part's card
-  const cardName = el('h2', 'card-name', { id: 'part-card-name' }, '');
-  const cardRole = el('p', 'card-role', {}, '');
-  const close = el('button', 'card-close', { type: 'button', 'data-press': '', 'aria-label': 'Close part details' },
-    el('span', '', { 'aria-hidden': 'true' }, '×'));
-  const card = el('section', 'card', { 'aria-labelledby': 'part-card-name' },
-    el('div', 'card-head', {}, el('span', 'card-kicker', {}, 'Selected part'), close), cardName, cardRole);
-  card.hidden = true;
-  close.addEventListener('click', () => {
-    selection.set(null);
-    tabs[current].focus();
-  });
-
-  host.replaceChildren(card, tablist, ...panels);
+  // the page's headings run h1, h2, h3: the panel's own heading, for screen readers
+  const heading = el('h2', 'sr-only', { id: 'panel-title' }, 'About the gearbox');
+  host.replaceChildren(heading, tablist, ...panels);
 
   let pressed: HTMLButtonElement | null = null;
-  const showPart = (id: PartId | null): void => {
+  selection.subscribe((id) => {
     if (pressed) pressed.setAttribute('aria-pressed', 'false');
     pressed = id === null ? null : parts.buttons.get(id) ?? null;
     if (pressed) pressed.setAttribute('aria-pressed', 'true');
-    if (id === null) { card.hidden = true; return; }
-    setText(cardName, PARTS[id].name);
-    setText(cardRole, PARTS[id].role);
-    card.hidden = false;
-  };
-  selection.subscribe(showPart);
-  showPart(selection.get());
+  });
 
   let currentRow: HTMLElement | null = null;
   return {
-    showPart,
+    focusTab() { tabs[current].focus(); },
     syncLive(r) {
       for (const [key] of LIVE) setText(live.values.get(key)!, r[key]);
       const row = ratioTab.rows.get(r.gear) ?? null;
@@ -276,4 +253,36 @@ export function mountPanel(host: HTMLElement): { showPart(id: PartId | null): vo
       }
     },
   };
+}
+
+/**
+ * The selected part's card, on the stage under the instrument cluster: its name, what it does and
+ * a close button. Hidden while nothing is selected. `onClose` says where focus goes after a close
+ * from the keyboard. Calls `onChange` after it shows, hides or changes size.
+ */
+export function mountPartCard(host: HTMLElement, hooks: { onClose(): void; onChange(): void }): void {
+  const name = el('h2', 'card-name', { id: 'part-card-name' }, '');
+  const role = el('p', 'card-role', {}, '');
+  const close = el('button', 'card-close', { type: 'button', 'data-press': '', 'aria-label': 'Close part details' },
+    el('span', '', { 'aria-hidden': 'true' }, '×'));
+  host.setAttribute('aria-labelledby', 'part-card-name');
+  host.replaceChildren(
+    el('div', 'card-head', {}, el('span', 'card-kicker', {}, 'Selected part'), close), name, role);
+  host.hidden = true;
+  close.addEventListener('click', () => {
+    const hadFocus = host.contains(document.activeElement);
+    selection.set(null);
+    if (hadFocus) hooks.onClose();
+  });
+  const show = (id: PartId | null): void => {
+    if (id === null) host.hidden = true;
+    else {
+      setText(name, PARTS[id].name);
+      setText(role, PARTS[id].role);
+      host.hidden = false;
+    }
+    hooks.onChange();
+  };
+  selection.subscribe(show);
+  show(selection.get());
 }
