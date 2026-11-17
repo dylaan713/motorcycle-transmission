@@ -28,7 +28,8 @@ function harness(opts: { autoPlay: boolean; lessons?: Lesson[]; ignition?: boole
       if (patch === 'reset') sim.reset(); else sim.setState(patch);
     },
     setSource(s) { calls.push({ hook: 'setSource', arg: s }); source = s; },
-    releaseControls() { calls.push({ hook: 'releaseControls' }); },
+    // as the real hook will: keys and pointers let go, so the visitor's inputs fall to rest
+    releaseControls() { calls.push({ hook: 'releaseControls' }); visitorInputs = { ...NEUTRAL_INPUTS }; },
     seedControls(inputs) { calls.push({ hook: 'seedControls', arg: { ...inputs } }); visitorInputs = { ...inputs }; },
     setIgnition(on) { calls.push({ hook: 'setIgnition', arg: on }); ignition = on; },
     getIgnition() { return ignition; },
@@ -197,10 +198,9 @@ test('next past the last step completes the lesson; prev at the first step stays
   expect(h.runner.stepIndex).toBe(0);
   expect(h.calls).toEqual([]);
   for (let i = 1; i < l1.steps.length; i++) { h.runner.next(); expect(h.runner.stepIndex).toBe(i); }
-  // the tour's later steps keep the last state, so prev rewinds to the step that sets one
   h.runner.prev();
-  expect(h.runner.stepIndex).toBe(0);
-  for (let i = 1; i < l1.steps.length; i++) h.runner.next();
+  expect(h.runner.stepIndex).toBe(l1.steps.length - 2);
+  h.runner.next();
   expect(h.runner.stepIndex).toBe(l1.steps.length - 1);
   expect(h.runner.completed.has(l1.id)).toBe(false);
   h.runner.next();
@@ -218,6 +218,37 @@ test('prev into a step that keeps the last state restarts from the nearest step 
   h.runner.prev();
   expect(h.runner.stepIndex).toBe(1);
   expect(h.runner.phase).toBe('playing');
+});
+
+test('prev in a tour with no scripts moves back exactly one step', () => {
+  for (const n of [1, 8]) {
+    const h = harness({ autoPlay: true });
+    const l = byNumber(n);
+    expect(l.steps.some((s) => s.script), l.id).toBe(false);
+    h.runner.start(l.id);
+    for (let i = 1; i < l.steps.length; i++) h.runner.next();
+    for (let i = l.steps.length - 1; i > 0; i--) {
+      expect(h.runner.stepIndex, l.id).toBe(i);
+      h.calls.length = 0;
+      h.runner.prev();
+      expect(h.runner.stepIndex, l.id).toBe(i - 1);
+      expect(h.runner.phase, l.id).toBe('handover');
+      // a keep step is entered as it is, without replacing the state
+      const keep = l.steps[i - 1].start === undefined || l.steps[i - 1].start === 'keep';
+      expect(h.calls.some((c) => c.hook === 'setState'), `${l.id} step ${i - 1}`).toBe(!keep);
+      expect(h.last('applyView')?.arg, l.id).toEqual(l.steps[i - 1].view ?? {});
+    }
+  }
+});
+
+test('retry on a tour step with a scripted step before it still restarts from the start', () => {
+  const h = harness({ autoPlay: true });
+  const l9 = byNumber(9); // idle-in-first (reset, script), dump (script), how-to-restart (keep, no script)
+  h.runner.start(l9.id);
+  h.playOut(); h.runner.next(); h.playOut(); h.runner.next();
+  expect(h.runner.stepIndex).toBe(2);
+  h.runner.retry();
+  expect(h.runner.stepIndex).toBe(0);
 });
 
 test('next during playing is ignored', () => {
@@ -252,6 +283,98 @@ test('the hold at hand-over keeps the lever in until the visitor touches a contr
   h.runner.notifyVisitorInput();
   expect(h.last('setSource')?.arg).toBeNull();
   expect(h.runner.phase).toBe('handover');
+});
+
+test('a held control survives play() until the script first runs', () => {
+  const h = harness({ autoPlay: false });
+  h.runner.start(byNumber(3).id);
+  h.runner.play();
+  h.playOut(); // lever-in: ends with the lever held
+  h.runner.next(); // the clunk step, ready, still holding the lever
+  h.runner.play();
+  h.runner.notifyVisitorInput(); // before any source call
+  expect((h.last('seedControls')?.arg as Inputs).clutchLever).toBe(1);
+  expect(h.last('setSource')?.arg).toBeNull();
+  // and exit in the same window seeds the lever in as well
+  const e = harness({ autoPlay: false });
+  e.runner.start(byNumber(3).id);
+  e.runner.play(); e.playOut(); e.runner.next(); e.runner.play();
+  e.runner.exit();
+  expect((e.last('seedControls')?.arg as Inputs).clutchLever).toBe(1);
+});
+
+test('ride input while a scripted step is ready hands over, and Play still plays it', () => {
+  const h = harness({ autoPlay: false });
+  const l3 = byNumber(3);
+  h.runner.start(l3.id);
+  h.runner.play(); h.playOut(); h.runner.next(); // clunk, ready, lever held
+  h.runner.notifyVisitorInput();
+  expect(h.runner.phase).toBe('handover');
+  expect(h.runner.stepIndex).toBe(1);
+  expect(h.last('setSource')?.arg).toBeNull();
+  expect((h.last('seedControls')?.arg as Inputs).clutchLever).toBe(1);
+  // "Play it for me": re-entered from its start, as retry does, and played
+  h.calls.length = 0;
+  h.runner.play();
+  expect(h.runner.stepIndex).toBe(0); // clunk keeps the last state; lever-in is scripted
+  expect(h.calls.find((c) => c.hook === 'setState')?.arg).toBe('reset');
+  expect(h.runner.phase).toBe('playing');
+  // a ready step entered fresh hands over the same way, seeded at rest
+  const f = harness({ autoPlay: false });
+  f.runner.start(l3.id);
+  f.runner.notifyVisitorInput();
+  expect(f.runner.phase).toBe('handover');
+  expect(f.last('setSource')?.arg).toBeNull();
+  f.runner.play();
+  expect(f.runner.stepIndex).toBe(0);
+  expect(f.runner.phase).toBe('playing');
+});
+
+test('play on a tour step without a script does nothing', () => {
+  const h = harness({ autoPlay: false });
+  h.runner.start(byNumber(1).id);
+  h.calls.length = 0;
+  h.runner.play();
+  expect(h.runner.phase).toBe('handover');
+  expect(h.calls).toEqual([]);
+});
+
+test('an ignition-off step keeps the ignition off in what the visitor is seeded with, even mid-script', () => {
+  const lesson: Lesson = {
+    id: 'off', number: 96, title: 'Off', summary: 'Off.',
+    steps: [
+      step({ id: 'a', start: { engineOff: true }, ignition: false, script: keyframes({ handDrumTorque: [[0, 1]] }), seconds: 1, outcome: () => true }),
+      step({ id: 'b' }),
+      step({ id: 'c' }),
+    ],
+  };
+  const h = harness({ autoPlay: true, lessons: [lesson] });
+  h.runner.start('off');
+  h.frame();
+  expect(h.runner.phase).toBe('playing');
+  h.runner.notifyVisitorInput();
+  expect((h.last('seedControls')?.arg as Inputs).ignition).toBe(false);
+});
+
+test('a step continuing from a held control reaches hand-over after time spent on the card', () => {
+  // each pair: a step ending with the lever held, and the step that carries on from it
+  const cases: Array<[number, string, string]> = [
+    [3, 'clunk', 'waiting'], [4, 'ready', 'feed'], [9, 'idle-in-first', 'dump'],
+  ];
+  for (const [n, before, after] of cases) {
+    const h = harness({ autoPlay: true });
+    const l = byNumber(n);
+    h.runner.start(l.id);
+    while (l.steps[h.runner.stepIndex].id !== before) { h.playOut(); h.runner.next(); }
+    h.playOut();
+    expect(h.runner.phase, `${l.id}/${before}`).toBe('handover');
+    for (let t = 0; t < 0.5; t += 1 / 60) h.frame(); // half a second on the card
+    expect(h.sim.getState().clutch.capacity, `${l.id}/${before}: lever still in`).toBe(0);
+    h.runner.next();
+    expect(l.steps[h.runner.stepIndex].id).toBe(after);
+    h.playOut();
+    expect(h.runner.phase, `${l.id}/${after}`).toBe('handover');
+  }
 });
 
 test('the visitor is seeded with the held inputs', () => {

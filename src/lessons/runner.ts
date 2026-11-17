@@ -11,7 +11,7 @@ export interface LessonRunner {
   next(): void; // ignored while playing; on the last step, from handover, completes and exits
   prev(): void; // the previous step from its start; stays on the first step
   exit(): void; // from any phase: view, time scale and ignition restored, the visitor in control
-  play(): void; // from ready only
+  play(): void; // from ready; from handover on a scripted step, replays it from its start
   retry(): void; // the step again from its start (or the nearest earlier step that has one)
   notifyVisitorInput(): void; // the visitor touched a ride control: ends a script or a hold
   readonly lesson: Lesson | null;
@@ -39,13 +39,14 @@ const DEFAULT_SECONDS = 4;
  * A step's script, wrapped to run as the loop's source. It keeps its own clock (one dt per call,
  * as runSource does) and records the outcome trace: the state after step 1, 11, 21 ... and the
  * state after the last scripted step, which is `final`. Past that it repeats the script's last
- * inputs, so a frame that overshoots the scripted time does not drop a held control.
+ * inputs, so a frame that overshoots the scripted time does not drop a held control. Until its
+ * first call it reports `initial`, the inputs it took over from.
  */
-function recorder(script: InputSource, seconds: number) {
+function recorder(script: InputSource, seconds: number, initial: Inputs) {
   const n = Math.round(seconds / PARAMS.dt);
   const trace: SimState[] = [];
   let calls = 0; // the state passed in has had `calls` steps since the script began
-  let last: Inputs = { ...NEUTRAL_INPUTS };
+  let last: Inputs = { ...initial };
   let final: SimState | null = null;
   const source: InputSource = (_t, state) => {
     if (calls >= 1 && calls <= n && (calls - 1) % SAMPLE_EVERY === 0) trace.push(state);
@@ -94,12 +95,12 @@ export function createLessonRunner(
     current = source;
     hooks.setSource(source);
   };
-  /** The held inputs, with the ignition kept off in a step that needs the engine off. */
-  const heldInputs = (): Inputs => ({ ...held!, ignition: held!.ignition && ignitionOn() });
-  const holdSource: InputSource = () => heldInputs();
+  /** Inputs with the ignition kept off in a step that needs the engine off. */
+  const masked = (u: Inputs): Inputs => ({ ...u, ignition: u.ignition && ignitionOn() });
+  const holdSource: InputSource = () => masked(held!);
 
   /** The inputs the runner is supplying now, or null when the visitor rides. */
-  const supplied = (): Inputs | null => (rec !== null ? rec.last : held !== null ? heldInputs() : null);
+  const supplied = (): Inputs | null => (rec !== null ? masked(rec.last) : held !== null ? masked(held) : null);
 
   /** Hands the ride to the visitor, their controls seeded from whatever the runner was supplying. */
   const toVisitor = (): void => {
@@ -110,11 +111,18 @@ export function createLessonRunner(
     use(null);
   };
 
-  /** The nearest step at or before i that sets its own start, so it can be entered on its own. */
+  /**
+   * The step to enter so that step i starts as it should. A step that sets its own start is
+   * entered directly. So is a 'keep' step when no scripted step lies between it and the nearest
+   * earlier explicit start, nor in the step being left (a pure tour); otherwise that explicit start.
+   */
   const fromStart = (i: number): number => {
+    const steps = lesson!.steps;
     let j = i;
-    while (j > 0 && startState(lesson!.steps[j]) === 'keep') j--;
-    return j;
+    while (j > 0 && startState(steps[j]) === 'keep') j--;
+    if (j === i) return i;
+    const span = steps.slice(j, Math.max(i, stepIndex) + 1);
+    return span.some((s) => s.script) ? j : i;
   };
 
   const enter = (i: number): void => {
@@ -138,9 +146,17 @@ export function createLessonRunner(
   };
 
   const play = (): void => {
-    if (phase !== 'ready') return;
     const s = step();
-    rec = recorder(s.script!, s.seconds ?? DEFAULT_SECONDS);
+    if (!s.script) return;
+    if (phase === 'handover') { // "Play it for me": from the step's start, as retry does
+      enter(fromStart(stepIndex));
+      if ((phase as RunnerPhase) === 'ready') play(); // enter() set it; TS cannot see that
+      return;
+    }
+    if (phase !== 'ready') return;
+    // until the script's first step, it supplies what it takes over: a held control stays held
+    const initial = held ?? { ...NEUTRAL_INPUTS, ignition: ignitionOn() };
+    rec = recorder(s.script, s.seconds ?? DEFAULT_SECONDS, initial);
     held = null;
     use(rec.source);
     phase = 'playing';
@@ -188,7 +204,7 @@ export function createLessonRunner(
     },
     notifyVisitorInput() {
       if (lesson === null) return;
-      if (phase === 'playing') {
+      if (phase === 'playing' || phase === 'ready') { // ride input ends the scripted part
         toVisitor();
         phase = 'handover';
         emit();
