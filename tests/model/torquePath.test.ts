@@ -32,14 +32,14 @@ test('every part is keyed by its own id', () => {
 });
 
 // between the input and output shafts the torque passes the locked pair and the sliding gear whose
-// dogs lock it; for fifth and sixth that is the half of the third-and-fourth piece facing the gear
+// dogs lock it; for fifth and sixth that is the whole third-and-fourth piece, in axial order
 const THROUGH_GEARS: Record<1 | 2 | 3 | 4 | 5 | 6, string[]> = {
   1: ['gear1in', 'gear1out', 'gear5out'],
   2: ['gear2in', 'gear2out', 'gear6out'],
   3: ['gear3in', 'gear3out', 'gear5out'],
   4: ['gear4in', 'gear4out', 'gear6out'],
-  5: ['gear3in', 'gear5in', 'gear5out'],
-  6: ['gear4in', 'gear6in', 'gear6out'],
+  5: ['gear3in', 'gear4in', 'gear5in', 'gear5out'],
+  6: ['gear3in', 'gear4in', 'gear6in', 'gear6out'],
 };
 for (const g of [1, 2, 3, 4, 5, 6] as const) {
   test(`in gear ${g} the path runs through the locked pair and the slider that locks it`, () => {

@@ -40,7 +40,7 @@ function overview(): HTMLElement {
   }
   return el('div', 'prose', {},
     el('p', '', {}, 'A live simulation of a motorcycle clutch and six-speed sequential gearbox. ',
-      'The orange line is the torque path: every part it runs through is carrying torque from the crankshaft toward the rear wheel at this moment. ',
+      'The orange line is the torque path: every part it runs through is carrying torque between the crankshaft and the rear wheel at this moment. ',
       'The numbers are representative of a middleweight sport bike.'),
     el('h3', '', {}, 'How to read it'),
     el('p', '', {}, 'The clutch turns the input shaft, and the output shaft below it turns the front sprocket. ',
@@ -79,7 +79,7 @@ function ratios(): { root: HTMLElement; rows: Map<string, HTMLElement> } {
   const root = el('div', 'prose', {},
     el('div', 'table-wrap', {}, table),
     el('p', 'note', {},
-      `Teeth are input : output. Ratio is input shaft turns per output shaft turn; overall adds the primary drive (${PARAMS.primary.driven}:${PARAMS.primary.drive}) and the chain (${PARAMS.final.rear}:${PARAMS.final.front}), so it is crankshaft turns per rear wheel turn. Top speed is the road speed at the ${thousands(PARAMS.engine.limiterRpm)} rpm limiter; in sixth, air drag holds the bike below it.`));
+      `Teeth are input : output. Ratio is input shaft turns per output shaft turn; overall multiplies in the primary drive (${PARAMS.primary.driven}:${PARAMS.primary.drive}) and the chain (${PARAMS.final.rear}:${PARAMS.final.front}), so it is crankshaft turns per rear wheel turn. Top speed is the road speed at the ${thousands(PARAMS.engine.limiterRpm)} rpm limiter; in sixth, air drag holds the bike below it.`));
   return { root, rows };
 }
 
@@ -110,7 +110,7 @@ function liveData(): { root: HTMLElement; values: Map<keyof Reading, HTMLElement
   return { root: el('div', 'prose', {}, list), values };
 }
 
-// ---- Specifications ----------------------------------------------------------------------------
+// ---- Specs -------------------------------------------------------------------------------------
 
 function specifications(): HTMLElement {
   const peak = PARAMS.engine.torqueCurve.reduce((a, b) => (b[1] > a[1] ? b : a));
@@ -159,9 +159,27 @@ function partsList(): { root: HTMLElement; buttons: Map<PartId, HTMLButtonElemen
 
 // ---- Tabs --------------------------------------------------------------------------------------
 
+export interface TabKey { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean }
+
+/**
+ * The tab a key moves to in a row of `count` tabs with `current` selected: Left and Right wrap,
+ * Home and End jump to the ends. Null for any other key, and whenever a browser modifier is held,
+ * so shortcuts such as Alt+Left still reach the browser.
+ */
+export function tabKeyTarget(e: TabKey, count: number, current: number): number | null {
+  if (e.altKey || e.ctrlKey || e.metaKey) return null;
+  switch (e.key) {
+    case 'ArrowRight': return (current + 1) % count;
+    case 'ArrowLeft': return (current - 1 + count) % count;
+    case 'Home': return 0;
+    case 'End': return count - 1;
+    default: return null;
+  }
+}
+
 /**
  * The information panel: a card for the selected part above five tabs (Overview, Ratios, Live
- * data, Specifications, Parts) in the ARIA tabs pattern, with roving tabindex and automatic
+ * data, Specs, Parts) in the ARIA tabs pattern, with roving tabindex and automatic
  * activation. The part card follows the shared selection; `syncLive` updates the live figures
  * and marks the current gear in the ratio table, writing only what changed.
  */
@@ -210,12 +228,8 @@ export function mountPanel(host: HTMLElement): { showPart(id: PartId | null): vo
   };
   tabs.forEach((tab, i) => tab.addEventListener('click', () => select(i, false)));
   tablist.addEventListener('keydown', (e) => {
-    const n = tabs.length;
-    const to = e.key === 'ArrowRight' ? (current + 1) % n
-      : e.key === 'ArrowLeft' ? (current - 1 + n) % n
-      : e.key === 'Home' ? 0
-      : e.key === 'End' ? n - 1 : -1;
-    if (to < 0) return;
+    const to = tabKeyTarget(e, tabs.length, current);
+    if (to === null) return;
     e.preventDefault();
     select(to, true);
   });

@@ -17,7 +17,10 @@ export function mountModeChip(host: HTMLElement, driver: Driver): { ready(): voi
     if (shown === 'demo') {
       const chip = el('div', 'chip', { tabindex: '-1' },
         el('span', 'chip-dot', { 'aria-hidden': 'true' }), el('span', 'chip-name', {}, 'Demo ride'),
-        el('span', 'chip-hint', {}, 'touch any control to take over'));
+        // the full hint stays in the accessibility tree at every width; narrow screens show a short one
+        el('span', 'chip-hint', {},
+          el('span', 'chip-hint-long', {}, 'touch any control to take over'),
+          el('span', 'chip-hint-short', { 'aria-hidden': 'true' }, 'any control takes over')));
       host.replaceChildren(chip);
       if (hadFocus) chip.focus();
     } else {
@@ -32,16 +35,21 @@ export function mountModeChip(host: HTMLElement, driver: Driver): { ready(): voi
   return { ready() { isReady = true; render(); } };
 }
 
-const STALLED = 'Stalled. Pull the clutch and press Enter to restart.';
-const OFF = 'Ignition off. Press I to switch it on.';
+// keyboard wording on wide screens with a fine pointer, the deck's button names on phones
+const MESSAGES = {
+  keys: { stalled: 'Stalled. Pull the clutch and press Enter to restart.', off: 'Ignition off. Press I to switch it on.' },
+  touch: { stalled: 'Stalled. Pull the clutch and press Start to restart.', off: 'Ignition off. Tap Ignition to switch it on.' },
+} as const;
 
 /** A polite live line for status changes (a stall, the ignition); never the changing numbers. */
 export function mountStatus(host: HTMLElement): { sync(r: Reading): void } {
   host.setAttribute('role', 'status');
   host.setAttribute('aria-live', 'polite');
+  const touch = matchMedia('(max-width: 899.98px), (pointer: coarse)');
   return {
     sync(r) {
-      setText(host, r.engine === 'stalled' ? STALLED : r.engine === 'off' ? OFF : '');
+      const m = MESSAGES[touch.matches ? 'touch' : 'keys'];
+      setText(host, r.engine === 'stalled' ? m.stalled : r.engine === 'off' ? m.off : '');
     },
   };
 }

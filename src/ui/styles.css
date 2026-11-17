@@ -266,20 +266,22 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .app-header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--s6); }
   .header-slots { display: contents; }
 }
-@media (min-width: 900px) and (max-width: 1179.98px) {
-  .chip-hint { display: none; }
-}
 .chip, .chip-btn {
   display: inline-flex; align-items: center; gap: var(--s2); height: 32px; padding: 0 var(--s3);
   font: inherit; font-size: var(--t-sm); line-height: 1; white-space: nowrap;
   border: 1px solid var(--steel-2); border-radius: 16px; color: var(--ink);
 }
 .chip { background: transparent; }
-.chip:focus { outline: none; }
 .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
 .chip-hint { color: var(--third); padding-left: var(--s2); border-left: 1px solid var(--steel-2); }
+.chip-hint-short { display: none; }
 .chip-btn { background: var(--steel-1); border-color: var(--steel-3); cursor: pointer; }
 .chip-btn:hover { border-color: var(--third); }
+/* below 1180px the short hint shows; the full one stays for screen readers */
+@media (max-width: 1179.98px) {
+  .chip-hint-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .chip-hint-short { display: inline; }
+}
 
 /* ---- status line, over the top of the stage ---- */
 .status {
@@ -383,8 +385,13 @@ h2 { font-size: var(--t-lg); font-stretch: 112%; }
   .ro-gear-value { font-size: var(--t-xl); }
   .ro-value { font-size: var(--t-md); }
   .tach { --tach-w: 72px; }
-  .chip-hint { display: none; }
-  .chip, .chip-btn { height: 32px; padding: 0 var(--s3); font-size: var(--t-xs); }
+  .chip-btn { height: 32px; padding: 0 var(--s3); font-size: var(--t-xs); }
+  /* phones: the hint sits under the chip's name, two short lines in the header's height */
+  .chip {
+    display: grid; grid-template-columns: auto auto; column-gap: var(--s2); row-gap: 0; align-items: center;
+    height: auto; padding: 0; border: 0; font-size: var(--t-xs); line-height: 1.2;
+  }
+  .chip-hint { grid-column: 2; padding-left: 0; border-left: 0; }
   .status { top: var(--s2); }
   .part-btn { min-height: 44px; }
   .card-close { width: 44px; height: 44px; }

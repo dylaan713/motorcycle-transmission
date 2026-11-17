@@ -14,19 +14,19 @@ const TO_WHEEL: readonly PartId[] = ['outputShaft', 'sprocket', 'chain', 'rearSp
 const SLIDER_IDS = Object.keys(PARAMS.sliders) as SliderId[];
 
 /**
- * The gears torque passes between the shafts in gear g: the locked pair, and the sliding gear whose
- * dogs lock its free gear to the shaft, listed in the order the torque reaches them. When a slider
- * is one piece carrying two gears (third and fourth), the half next to g in GEAR_ORDER faces it.
+ * The gears torque passes between the shafts in gear g: the locked pair, and the sliding piece whose
+ * dogs lock its free gear to the shaft, listed in the order the torque reaches them. A sliding piece
+ * that carries two gears (third and fourth) is one rigid part, so both are listed, in axial order.
  */
 function throughGears(g: GearId): PartId[] {
   const id = SLIDER_IDS.find((k) => PARAMS.sliders[k].neg === g || PARAMS.sliders[k].pos === g)!;
   const { shaft } = PARAMS.sliders[id];
-  const at = GEAR_ORDER.indexOf(g);
-  const halves = GEAR_ORDER.filter((h) => gearKind(shaft, h) === 'slider' && sliderOfGear(shaft, h) === id);
-  const facing = halves.reduce((a, b) => (Math.abs(GEAR_ORDER.indexOf(b) - at) < Math.abs(GEAR_ORDER.indexOf(a) - at) ? b : a));
-  const slider: PartId = `gear${facing}${shaft === 'input' ? 'in' : 'out'}`;
+  const end = shaft === 'input' ? 'in' : 'out';
+  const piece = GEAR_ORDER
+    .filter((h) => gearKind(shaft, h) === 'slider' && sliderOfGear(shaft, h) === id)
+    .map((h): PartId => `gear${h}${end}`);
   const pair: PartId[] = [`gear${g}in`, `gear${g}out`];
-  return shaft === 'input' ? [slider, ...pair] : [...pair, slider];
+  return shaft === 'input' ? [...piece, ...pair] : [...pair, ...piece];
 }
 const THROUGH: Record<GearId, readonly PartId[]> = {
   1: throughGears(1), 2: throughGears(2), 3: throughGears(3), 4: throughGears(4), 5: throughGears(5), 6: throughGears(6),
