@@ -66,3 +66,13 @@ test('every generator in this file builds a clean closed solid', () => {
   expectCleanSolid(chainLink(true), 'inner link'); expectCleanSolid(chainLink(false), 'outer link');
   rearWheel().forEach((g, i) => expectCleanSolid(g, ['tyre', 'rim', 'hub'][i]));
 });
+
+test('pointAt writes into an out object when given one, with the same values', () => {
+  const p = chainPath(DRIVE);
+  const out = { y: 0, z: 0, tangent: 0 };
+  for (const s of [0, 0.1, 0.5, p.length * 0.7, -0.2]) {
+    const fresh = p.pointAt(s);
+    expect(p.pointAt(s, out)).toBe(out);
+    expect(out).toEqual(fresh);
+  }
+});

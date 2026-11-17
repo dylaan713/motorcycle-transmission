@@ -11,3 +11,5 @@ export const wrap = (x: number, period: number): number => {
   const w = r < 0 ? r + period : r;
   return w >= period ? 0 : w; // r + period can round up to exactly period
 };
+/** Wrap an angle into (-π, π]. */
+export const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));

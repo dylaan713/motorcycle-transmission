@@ -16,3 +16,10 @@ test('wrap stays strictly below the period for tiny negative input', () => {
   expect(wrap(-1e-20, 1)).toBeLessThan(1);
   expect(wrap(-1e-20, 1)).toBeGreaterThanOrEqual(0);
 });
+test('wrapPi wraps an angle into (-π, π], the one source for every view', async () => {
+  const { wrapPi } = await import('../../src/sim/units');
+  expect(wrapPi(deg(190))).toBeCloseTo(deg(-170), 12);
+  expect(wrapPi(deg(-190))).toBeCloseTo(deg(170), 12);
+  expect(wrapPi(deg(45) + 6 * Math.PI)).toBeCloseTo(deg(45), 12);
+  expect(wrapPi(0)).toBe(0);
+});

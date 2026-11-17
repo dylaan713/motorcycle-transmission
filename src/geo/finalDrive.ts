@@ -1,4 +1,5 @@
 import { BufferGeometry, Float32BufferAttribute, Vector2 } from 'three';
+import { wrapPi } from '../sim/units';
 import { DIM } from './dimensions';
 import { arc } from './outline';
 import { lathe, prism, rotateX, toGeometry } from './mesh';
@@ -15,14 +16,18 @@ import type { Solid } from './mesh';
  */
 
 const TWO_PI = 2 * Math.PI;
-const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
 type Piece =
   | { kind: 'arc'; length: number; cy: number; cz: number; r: number; a0: number }
   | { kind: 'line'; length: number; y0: number; z0: number; dy: number; dz: number };
 
+/** A point on the chain loop and the direction of travel there. */
+export interface ChainPoint { z: number; y: number; tangent: number }
+
 export function chainPath(o: { frontRadius: number; rearRadius: number; centreDistance: number }): {
-  length: number; pointAt(s: number): { z: number; y: number; tangent: number };
+  length: number;
+  /** The point `s` along the loop; written into `out` when given (a pose calls this per link per frame). */
+  pointAt(s: number, out?: ChainPoint): ChainPoint;
 } {
   const { frontRadius: rf, rearRadius: rr, centreDistance: d } = o;
   if (d <= Math.abs(rr - rf)) throw new Error('sprockets overlap');
@@ -42,15 +47,17 @@ export function chainPath(o: { frontRadius: number; rearRadius: number; centreDi
   const length = pieces.reduce((sum, p) => sum + p.length, 0);
   return {
     length,
-    pointAt(s: number) {
+    pointAt(s: number, out: ChainPoint = { y: 0, z: 0, tangent: 0 }) {
       let u = ((s % length) + length) % length;
       for (const p of pieces) {
         if (u > p.length && p !== pieces[pieces.length - 1]) { u -= p.length; continue; }
         if (p.kind === 'arc') {
           const a = p.a0 + u / p.r;
-          return { y: p.cy + p.r * Math.cos(a), z: p.cz + p.r * Math.sin(a), tangent: wrapPi(a + Math.PI / 2) };
+          out.y = p.cy + p.r * Math.cos(a); out.z = p.cz + p.r * Math.sin(a); out.tangent = wrapPi(a + Math.PI / 2);
+        } else {
+          out.y = p.y0 + u * p.dy; out.z = p.z0 + u * p.dz; out.tangent = Math.atan2(p.dz, p.dy);
         }
-        return { y: p.y0 + u * p.dy, z: p.z0 + u * p.dz, tangent: Math.atan2(p.dz, p.dy) };
+        return out;
       }
       throw new Error('unreachable');
     },

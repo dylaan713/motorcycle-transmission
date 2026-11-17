@@ -2,6 +2,7 @@ import { PARAMS } from '../sim/params';
 import type { InputSource } from '../sim/inputScript';
 import type { Simulation } from '../sim/simulation';
 import { NEUTRAL_INPUTS, type Inputs, type SimState } from '../sim/types';
+import { clamp } from '../sim/units';
 
 export interface Loop {
   tick(elapsedSeconds: number): void; // called once per animation frame with real elapsed time
@@ -51,7 +52,7 @@ export function createLoop(
     },
     stepOnce: step,
     setTimeScale(scale) {
-      timeScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number.isFinite(scale) ? scale : MAX_SCALE));
+      timeScale = clamp(Number.isFinite(scale) ? scale : MAX_SCALE, MIN_SCALE, MAX_SCALE);
     },
     setPaused(p) {
       paused = p;

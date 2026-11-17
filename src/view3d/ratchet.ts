@@ -1,6 +1,6 @@
 import { PARAMS } from '../sim/params';
 import type { SimState } from '../sim/types';
-import { clamp, deg } from '../sim/units';
+import { clamp, deg, wrapPi } from '../sim/units';
 import { DIM } from '../geo/dimensions';
 import { DRUM_AXIS, DRUM_REFERENCE, DRUM_TURN, SHIFT_SHAFT_AXIS, axisAt, directionOf, distanceOf } from './layout3d';
 import type { Axis } from './layout3d';
@@ -32,7 +32,6 @@ const rotAbout = (c: P, p: P, a: number): Axis => {
   const dy = p.y - c.y, dz = p.z - c.z, cs = Math.cos(a), sn = Math.sin(a);
   return { y: c.y + dy * cs - dz * sn, z: c.z + dy * sn + dz * cs };
 };
-const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
 const D = DRUM_AXIS, S = SHIFT_SHAFT_AXIS;
 const PINS = DIM.shiftPins;

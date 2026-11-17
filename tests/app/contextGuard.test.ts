@@ -25,3 +25,12 @@ test('a second loss event while lost keeps what was main at the first', () => {
   expect(g.restore('schematic')).toBe('3d');
   expect(g.restore('3d')).toBe('3d'); // a restore with nothing lost changes nothing
 });
+
+test('reset forgets a loss: a 3D view arriving again starts with a live context', () => {
+  const g = createContextGuard();
+  g.lose('3d');
+  g.reset();
+  expect(g.lost).toBe(false);
+  expect(g.request('3d')).toBe('3d');
+  expect(g.restore('schematic')).toBe('schematic'); // nothing left to restore
+});

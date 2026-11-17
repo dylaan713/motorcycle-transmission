@@ -251,6 +251,8 @@ function arrive3d(v3: View3d): void {
     layer.remove();
     tools.remove();
     stage.toggleAttribute('data-tools', false);
+    guard.reset(); // a lost context belonged to this view, not to the next one
+    applyInset();
     toolbar = null; callouts = null; view3d = null; leave3d = null;
   };
   syncChrome();

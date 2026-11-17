@@ -26,3 +26,11 @@ test('lastInputs is what the most recent step was given', () => {
   loop.tick(0.0163); // 32 steps; the last was given loop time 31 × dt
   expect(loop.lastInputs.throttle).toBeCloseTo(31 * PARAMS.dt, 12);
 });
+
+test('a time scale that is not a number runs at full speed; the range is clamped both ways', () => {
+  const loop = createLoop(createSimulation(), () => () => NEUTRAL_INPUTS, () => {});
+  loop.setTimeScale(Number.NaN); expect(loop.timeScale).toBe(1);
+  loop.setTimeScale(Infinity); expect(loop.timeScale).toBe(1);
+  loop.setTimeScale(0); expect(loop.timeScale).toBe(0.02);
+  loop.setTimeScale(0.5); expect(loop.timeScale).toBe(0.5);
+});

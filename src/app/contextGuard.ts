@@ -13,6 +13,8 @@ export interface ContextGuard {
   restore(main: ViewName | null): ViewName | null;
   /** The view to make main when `requested` is asked for (a toolbar button, the inset): null to refuse. */
   request(requested: ViewName): ViewName | null;
+  /** Forget any loss: the 3D view that had it is gone (a new one starts with a live context). */
+  reset(): void;
 }
 
 export function createContextGuard(): ContextGuard {
@@ -32,5 +34,6 @@ export function createContextGuard(): ContextGuard {
     request(requested) {
       return lost && requested === '3d' ? null : requested;
     },
+    reset() { lost = false; was3dMain = false; },
   };
 }

@@ -15,6 +15,8 @@ import { PARTS } from '../../src/model/parts';
 import type { GearNo, PartId } from '../../src/model/parts';
 import { createSimulation } from '../../src/sim/simulation';
 import type { SliderId } from '../../src/sim/types';
+import { grooveCommand } from '../../src/sim/shiftDrum';
+import { deg } from '../../src/sim/units';
 import { COLORS } from '../../src/ui/tokens';
 import { DIM } from '../../src/geo/dimensions';
 import { meshesOf, triangles, worldVertices } from './helpers';
@@ -137,16 +139,40 @@ function gearCylinders(): Cylinder[] {
   }
   return out;
 }
-const TRAVEL_ENDS: number[] = [-1, 0, 1];
-const poseSlidersAt = (x: number): void => {
+type SliderSet = Record<SliderId, number>;
+const SLIDER_IDS: SliderId[] = ['A', 'B', 'C'];
+/**
+ * Every combination of slider positions the simulation can produce, and then some. The drum
+ * commands all three at once (grooveCommand), swept through its whole travel a degree at a time,
+ * which covers the mixes in the middle of a shift; any slider may lag its command, held back at
+ * neutral by dogs meeting face to face; and every mix of the travel ends (-1, 0, +1), a superset.
+ */
+const SLIDER_SETS: SliderSet[] = (() => {
+  const seen = new Map<string, SliderSet>();
+  const add = (x: SliderSet): void => { seen.set(SLIDER_IDS.map((k) => x[k].toFixed(4)).join(','), x); };
+  for (let d = 0; d <= 300; d++) {
+    const c = Object.fromEntries(SLIDER_IDS.map((k) => [k, grooveCommand(k, deg(d))])) as SliderSet;
+    for (let lag = 0; lag < 8; lag++) add(Object.fromEntries(SLIDER_IDS.map((k, i) => [k, lag & (1 << i) ? 0 : c[k]])) as SliderSet);
+  }
+  for (const xa of [-1, 0, 1]) for (const xb of [-1, 0, 1]) for (const xc of [-1, 0, 1]) add({ A: xa, B: xb, C: xc });
+  return [...seen.values()];
+})();
+const label = (x: SliderSet): string => SLIDER_IDS.map((k) => `${k} ${x[k].toFixed(3)}`).join(', ');
+const poseSliders = (x: SliderSet): void => {
   const s = createSimulation().getState();
-  for (const k of ['A', 'B', 'C'] as SliderId[]) s.sliders[k].x = x;
+  for (const k of SLIDER_IDS) s.sliders[k].x = x[k];
   poseAssembly(a, s, EMPTY);
 };
 
-test('forks clear every gear solid, their own included, at both ends of their travel', () => {
-  for (const x of TRAVEL_ENDS) {
-    poseSlidersAt(x);
+test('the slider combinations mix positions: partway through a shift, and every mix of the travel ends', () => {
+  expect(SLIDER_SETS.length).toBeGreaterThan(27);
+  expect(SLIDER_SETS.some((x) => SLIDER_IDS.some((k) => Math.abs(x[k]) > 0.05 && Math.abs(x[k]) < 0.95))).toBe(true);
+  expect(SLIDER_SETS.some((x) => x.A === -1 && x.B === 1 && x.C === -1)).toBe(true);
+});
+
+test('forks clear every gear solid, their own included, at every slider combination', () => {
+  for (const x of SLIDER_SETS) {
+    poseSliders(x);
     const cylinders = gearCylinders();
     for (const k of ['A', 'B', 'C'] as SliderId[]) {
       let bad = 0;
@@ -156,14 +182,14 @@ test('forks clear every gear solid, their own included, at both ends of their tr
           if (Math.hypot(v.y - c.axis.y, v.z - c.axis.z) < c.r - 1e-9) bad++;
         }
       }
-      expect(bad, `fork ${k} at x ${x}`).toBe(0);
+      expect(bad, `fork ${k} with ${label(x)}`).toBe(0);
     }
   }
 });
 
-test('no fork claw volume intersects any gear\'s toothed region', () => {
-  for (const x of TRAVEL_ENDS) {
-    poseSlidersAt(x); a.root.updateMatrixWorld(true);
+test('no fork claw volume intersects any gear\'s toothed region, at every slider combination', () => {
+  for (const x of SLIDER_SETS) {
+    poseSliders(x); a.root.updateMatrixWorld(true);
     for (const k of ['A', 'B', 'C'] as SliderId[]) {
       const fx = a.node(`fork${k}` as PartId).getWorldPosition(new THREE.Vector3()).x;
       const claw = { x0: fx - CLAW_THICKNESS[k] / 2, x1: fx + CLAW_THICKNESS[k] / 2, rIn: COLLAR_RADIUS[k], rOut: CLAW_OUTER(k) };
@@ -175,7 +201,7 @@ test('no fork claw volume intersects any gear\'s toothed region', () => {
         if (overlap <= 0) continue;
         // an x overlap is allowed only with a gear on the other shaft whose tips the claw stays below
         const sameAxis = Math.hypot(p.y - SLIDER_AXIS[k].y, p.z - SLIDER_AXIS[k].z) < 1e-9;
-        expect(sameAxis, `claw ${k} at x ${x} is level with the teeth of ${id}`).toBe(false);
+        expect(sameAxis, `claw ${k} with ${label(x)} is level with the teeth of ${id}`).toBe(false);
         expect(claw.rOut, `claw ${k} reaches the tips of ${id}`).toBeLessThan(CENTRE_DISTANCE - tipRadius(shaft, g as GearNo));
       }
     }
@@ -184,9 +210,9 @@ test('no fork claw volume intersects any gear\'s toothed region', () => {
   for (const k of ['A', 'B'] as const) expect(COLLAR_GROOVE_WIDTH - CLAW_THICKNESS[k]).toBeGreaterThanOrEqual(0.0004 - 1e-12);
 });
 
-test('every meshing pair keeps at least 70% of its narrower toothed width in mesh, at every slider position', () => {
-  for (const x of TRAVEL_ENDS) {
-    poseSlidersAt(x); a.root.updateMatrixWorld(true);
+test('every meshing pair keeps at least 70% of its narrower toothed width in mesh, at every slider combination', () => {
+  for (const x of SLIDER_SETS) {
+    poseSliders(x); a.root.updateMatrixWorld(true);
     for (const g of GEAR_ORDER) {
       const span = (shaft: 'input' | 'output') => {
         const c = a.node(`gear${g}${shaft === 'input' ? 'in' : 'out'}` as PartId).getWorldPosition(new THREE.Vector3()).x;
@@ -195,7 +221,7 @@ test('every meshing pair keeps at least 70% of its narrower toothed width in mes
       };
       const [i0, i1] = span('input'), [o0, o1] = span('output');
       const overlap = Math.min(i1, o1) - Math.max(i0, o0);
-      expect(overlap / Math.min(i1 - i0, o1 - o0), `pair ${g} with sliders at ${x}`).toBeGreaterThanOrEqual(0.7);
+      expect(overlap / Math.min(i1 - i0, o1 - o0), `pair ${g} with ${label(x)}`).toBeGreaterThanOrEqual(0.7);
     }
   }
 });

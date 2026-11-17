@@ -68,3 +68,46 @@ describe('shouldHandleCameraKey', () => {
     expect(shouldHandleCameraKey(key('KeyQ'), target({ tag: 'BUTTON' }))).toBe(true);
   });
 });
+
+describe('trackFocusOrigin', () => {
+  // a fake window and elements: just enough of the DOM for the focus tracker and describeTarget
+  class FakeElement {
+    constructor(readonly tagName: string) {}
+    getAttribute(): string | null { return null; }
+    closest(): null { return null; }
+  }
+  const fakeWindow = () => {
+    const handlers = new Map<string, Array<(e: { target: unknown }) => void>>();
+    return {
+      addEventListener(type: string, fn: (e: { target: unknown }) => void, capture?: boolean) {
+        expect(capture, `${type} listens in the capture phase`).toBe(true);
+        handlers.set(type, [...(handlers.get(type) ?? []), fn]);
+      },
+      fire(type: string, target: unknown = null) { for (const fn of handlers.get(type) ?? []) fn({ target }); },
+    };
+  };
+  test('focus a pointer press gave is told from focus the keyboard gave', async () => {
+    const g = globalThis as Record<string, unknown>;
+    const saved = { Element: g.Element, HTMLElement: g.HTMLElement };
+    g.Element = FakeElement; g.HTMLElement = class extends FakeElement {};
+    try {
+      const { describeTarget, trackFocusOrigin } = await import('../../src/app/keys');
+      const win = fakeWindow();
+      trackFocusOrigin(win as unknown as Window);
+      const button = new FakeElement('button'), other = new FakeElement('a');
+      // a press, then the focus it causes: pointer focus
+      win.fire('pointerdown'); win.fire('focusin', button);
+      expect(describeTarget(button as unknown as Element)!.keyboardFocus).toBe(false);
+      // Tab: a keydown, then focus moves: keyboard focus
+      win.fire('keydown'); win.fire('focusin', other);
+      expect(describeTarget(other as unknown as Element)!.keyboardFocus).toBe(true);
+      expect(describeTarget(button as unknown as Element)!.keyboardFocus).toBe(true);
+      // a press that focuses nothing new does not mark the next keyboard focus as pointer focus
+      win.fire('pointerdown'); win.fire('keydown'); win.fire('focusin', button);
+      expect(describeTarget(button as unknown as Element)!.keyboardFocus).toBe(true);
+      expect(describeTarget(null)).toBeNull();
+    } finally {
+      g.Element = saved.Element; g.HTMLElement = saved.HTMLElement;
+    }
+  });
+});

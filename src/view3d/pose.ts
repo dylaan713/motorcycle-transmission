@@ -7,7 +7,7 @@ import type { TorquePath } from '../model/torquePath';
 import { PARAMS } from '../sim/params';
 import { clutchCapacityMax } from '../sim/clutch';
 import type { SimState } from '../sim/types';
-import { deg } from '../sim/units';
+import { clamp, deg, wrapPi } from '../sim/units';
 import { DIM } from '../geo/dimensions';
 import { plateStackOffsets, springLength } from '../geo/clutch';
 import { DETENT_ARM, STAR_SEAT_DEPTH, STAR_SEAT_EDGES, starWheelRadiusAt } from '../geo/shift';
@@ -30,9 +30,9 @@ const TORQUE_FULL = 150;
 const TORQUE_FLOOR = 0.55;
 /** Angle from a gear lug's centre to a slider dog's centre when the two just touch, rad. */
 const LUG_CONTACT = deg(DIM.dogWidthDeg);
-const wrapPi = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 const linkMatrix = new Matrix4();
+/** The two ends of the link being placed, reused every frame. */
+const linkEnds = [{ y: 0, z: 0, tangent: 0 }, { y: 0, z: 0, tangent: 0 }];
 
 /** Profile samples across the roller's footprint; the seats' sharp edges are added exactly. */
 const FOOTPRINT_SAMPLES = 96;
@@ -195,12 +195,12 @@ export function poseAssembly(a: Assembly, state: SimState, path: TorquePath): vo
   // the chain runs on in s with it (rear to front along the top run).
   const { path: loop, count, spacing, travelPerRadian } = rig.chain;
   const offset = TURN * ang.output * travelPerRadian;
-  let p = loop.pointAt(offset);
+  let p = loop.pointAt(offset, linkEnds[0]), q = linkEnds[1];
   for (let i = 0; i < count; i++) {
-    const q = loop.pointAt((i + 1) * spacing + offset);
+    loop.pointAt((i + 1) * spacing + offset, q);
     linkMatrix.makeRotationX(Math.atan2(q.z - p.z, q.y - p.y)).setPosition(0, p.y, p.z);
     (i % 2 === 0 ? a.chain.inner : a.chain.outer).setMatrixAt(i >> 1, linkMatrix);
-    p = q;
+    const t = p; p = q; q = t; // this link's far end is the next one's near end
   }
   a.chain.inner.instanceMatrix.needsUpdate = true;
   a.chain.outer.instanceMatrix.needsUpdate = true;
