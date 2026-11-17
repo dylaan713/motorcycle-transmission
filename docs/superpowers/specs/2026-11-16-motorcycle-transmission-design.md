@@ -172,6 +172,26 @@ What that adds:
   the known limits, and likely questions with answers.
 - **A glossary** of every technical term the page uses.
 
+## Visual direction chosen by the owner (2026-11-16)
+
+The owner said the page was "kind of boring" and asked to see options. Three first-screen mockups
+were made around a real render of the model (`docs/design-options/`, not tracked in git):
+A "The living drawing" (dark drafting sheet), B "The instrument" (race cluster), C "The plate"
+(light editorial). The owner's choice: "i think B is cool".
+
+**Direction B, "The instrument":** the page is a motorcycle's instrument cluster wrapped around its
+own gearbox. Near-black ground; the 3D model is the hero, full-bleed; a large sweeping tachometer
+arc frames the model; the gear numeral is enormous, a piece of typography in its own right, with
+road speed and engine speed beneath it in a condensed, fast display face; controls along the
+bottom feel like switchgear and a lever; very few boxes. The explanatory content opens as a drawer
+over the stage instead of occupying a permanent column. The accent stays orange and still means
+only "this part is carrying torque"; the tachometer is white and steel, never orange.
+
+Borrowed from direction A at the builder's discretion: numbered annotation balloons for the
+callouts. This direction replaces the layout and palette described under "Layout and style
+reference" and in the stage 2 plan's "Design plan" where they differ; the rule that the accent
+means only torque is unchanged.
+
 ## Stages
 
 Each stage ends with something working that is shown to the owner before the next begins.
