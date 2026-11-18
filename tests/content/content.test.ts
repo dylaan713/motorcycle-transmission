@@ -278,7 +278,7 @@ test('every derived value is used in MODEL.md', () => {
   expect(Object.keys(DERIVED).filter((k) => !marked.has(k))).toEqual([]);
 });
 
-test('MODEL.md has its nine parts, fifteen questions and the owner markers', () => {
+test('MODEL.md has its nine parts and fifteen questions, with no unconfirmed owner markers', () => {
   const heads = [...MODEL.matchAll(/^## (\d)\. /gm)].map((m) => Number(m[1]));
   expect(heads).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const qa = MODEL.slice(MODEL.search(/^## 8\. /m), MODEL.search(/^## 9\. /m)).replace(MARKER, '');
@@ -286,7 +286,8 @@ test('MODEL.md has its nine parts, fifteen questions and the owner markers', () 
   for (const q of ['Did you write this code?', 'How do you know it is right?', 'Why is neutral between first and second?', 'What is the timestep', 'Where do the numbers come from?', 'What would you measure to validate it?', 'Why are the dogs given a 16° window?']) {
     expect(qa).toContain(q);
   }
-  expect(MODEL).toContain('[owner: confirm or edit]');
+  // the owner confirmed the sentences that speak for him on 2026-11-18, so no marker may remain
+  expect(MODEL).not.toContain('[owner: confirm or edit]');
   // a part-by-part table drawn from the part registry
   for (const p of Object.values(PARTS)) expect(MODEL, p.name).toContain(p.name);
 });

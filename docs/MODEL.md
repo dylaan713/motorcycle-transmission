@@ -646,19 +646,19 @@ does not show. None of the reviews involved a person who works on gearboxes.
   standard involute teeth with no profile shift, so the 13<!-- param:gears.1.0 -->-tooth first gear would foul its partner
   by a few micrometers.
 
-## 8. Questions you may be asked
+## 8. Questions and answers
 
-Answers are in the first person, for the owner to say out loud. Sentences marked
-[owner: confirm or edit] speak for the owner and should be checked by him before use.
+Questions a reviewer is likely to ask, answered in the first person by the owner. The owner read
+and confirmed the sentences that speak for him on 2026-11-18.
 
 ### Did you write this code?
 
 No. I directed it. I chose the project, decided who it is for (engineering recruiters and
 students), asked for it to be highly interactive, picked the visual direction from three options,
-and required that the page explain everything, including to me. [owner: confirm or edit] An AI
+and required that the page explain everything, including to me. An AI
 coding agent wrote the code and the tests under that direction, and other AI agents reviewed it.
 What I can do is explain how it works, what it assumes and where it is wrong, which is what this
-document is for. [owner: confirm or edit]
+document is for.
 
 ### How do you know it is right?
 
@@ -754,7 +754,6 @@ gearboxes.
 Get it checked by someone who rebuilds gearboxes, and measure the clutch and the shift drum on a
 real bike. In the model I would add the engine's inertia to the dog engagement, a limit on the
 speed at which dogs can engage, and a separate gripping and sliding friction for the clutch.
-[owner: confirm or edit]
 
 ### What is a constant-mesh gearbox, in one sentence?
 
