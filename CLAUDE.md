@@ -21,11 +21,13 @@ Both must pass before any commit.
 - No manufacturer or model names anywhere.
 - No paid services, assets or libraries. No network calls after page load.
 - All geometry is generated in code; no downloaded third-party models.
-- Git is local only: no remote, no push.
+- Git: the repository is public at github.com/dylaan713/motorcycle-transmission (owner's decision,
+  2026-11-18). Ask the owner before any push. Nothing private goes into a commit.
 
 ## Capability
 
-No project-scoped skills installed; see `.claude/CAPABILITY.md` for the deferred and rejected sets.
+No project-scoped skills installed; see `.claude/CAPABILITY.md` (a local file, not published) for
+the deferred and rejected sets.
 
 ## Audit context
 
